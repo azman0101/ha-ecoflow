@@ -6,7 +6,7 @@
 - Test MQTT EcoFlow réel en `--observe --duration 45` : authentification applicative, certificat MQTT, abonnement et snapshot en lecture seule.
 - 26 messages reçus, une requête snapshot, zéro erreur de décodage.
 - SOC observé : 89 %, puis 88,995 % ; plafond : 90 %.
-- Aucun topic `property/set` utilisé. Aucune connexion au broker MQTT du HA du NVR ou de l'autre HA pendant ce test.
+- Aucun topic `property/set` utilisé. Aucune connexion à un broker MQTT de production pendant ce test.
 - Vérification de la protection des publications cloud : seuls les topics de lecture fixés par le client sont acceptés ; une publication retenue ou vers `property/set` est refusée.
 - Source Protobuf figée dans le livrable, vérifiée par SHA-256, licence amont conservée.
 

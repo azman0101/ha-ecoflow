@@ -1,8 +1,8 @@
 # Batterie EcoFlow via MQTT applicatif — collecteur et autre Home Assistant
 
-Cette version remplace le lecteur HTTP par un collecteur MQTT permanent. Les fichiers sont fournis pour **le Home Assistant qui gère la batterie et la prise Aqara**, pas pour le HA du NVR auquel Codex a accès. Aucun service de production n'a été installé sur le NVR et aucun YAML n'y a été chargé.
+Cette version remplace le lecteur HTTP par un collecteur MQTT permanent. Elle s'adresse au Home Assistant qui gère la batterie et la prise intelligente (exemple fourni avec une prise Aqara).
 
-La batterie concernée est la **DELTA 3 Classic**, numéro de série **P321ZE1APJ480076**. L'API développeur HTTP renvoie `1006`, mais l'authentification applicative et la lecture MQTT ont été testées avec succès.
+La batterie concernée est la **DELTA 3 Classic**, numéro de série à renseigner dans la configuration. L'API développeur HTTP renvoie `1006`, mais l'authentification applicative et la lecture MQTT ont été testées avec succès.
 
 ## 1. Architecture et différence avec /quota et /status
 
@@ -54,7 +54,7 @@ Le collecteur doit rester connecté : **ne pas le lancer toutes les minutes via 
 
 L'option fournie est un petit conteneur Docker sur une machine Linux de l'installation de la batterie. Il fonctionne avec HA Container comme avec HA OS, puisque HA reçoit les données via son broker MQTT. Sur HA OS, utiliser une machine Docker séparée ou un environnement d'extension adapté ; un terminal d'extension laissé ouvert n'est pas un service permanent.
 
-Décompresser l'archive dans un dossier de cette machine, par exemple :
+Cloner ce dépôt (ou copier ce dossier) dans un dossier de cette machine, par exemple :
 
 ```text
 /opt/ecoflow-mqtt/
@@ -93,8 +93,8 @@ config = {
     'api_host': 'https://api-e.ecoflow.com',
     'email': getpass.getpass('E-mail EcoFlow (masqué) : ').strip(),
     'password': getpass.getpass('Mot de passe EcoFlow : '),
-    'device_sn': 'P321ZE1APJ480076',
-    'instance_id': 'ecoflow-bridge-site-batterie',
+    'device_sn': 'VOTRE_NUMERO_DE_SERIE',
+    'instance_id': 'ecoflow-bridge',
     'snapshot_interval': 60,
     'freshness_seconds': 180,
     'topic_prefix': 'ecoflow/delta3classic',
@@ -181,7 +181,7 @@ Deux méthodes :
 1. Dans le fichier `automations.yaml`, remplacer l'ancien élément par l'élément livré, avec son `id` ; ne pas remplacer toutes les autres automatisations du fichier.
 2. Dans l'éditeur YAML de l'automatisation HA, utiliser le fichier `automation-ui.yaml` : il contient le même contenu sans tiret de liste racine ni `id`.
 
-Vérifier que `switch.aqara_smart_plug_eu_2` est bien la prise qui alimente la batterie sur **ce HA**. Ce nom provient de votre automatisation initiale ; il n'a pas été vérifié sur cette autre instance.
+Vérifier que `switch.aqara_smart_plug_eu_2` est bien la prise qui alimente la batterie sur **ce HA**. Adaptez-le à votre prise ; ce nom est un exemple.
 
 Comportement :
 

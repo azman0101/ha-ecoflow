@@ -1,0 +1,5 @@
+ha-ecoflow
+Copyright 2026 azman0101
+
+This product includes a Protobuf descriptor derived from tolwi/hassio-ecoflow-cloud
+(Apache License 2.0). See ecoflow-battery-reader/THIRD_PARTY.md.

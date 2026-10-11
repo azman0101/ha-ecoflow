@@ -1,4 +1,4 @@
-# Remplace l'automatisation Prise Aqara - Heures Creuses de l'AUTRE HA.
+# Exemple d'automatisation de recharge en heures creuses (prise Aqara).
 # Dans automations.yaml, ajouter cet élément à la liste existante.
 - id: aqara_heures_creuses_ecoflow_mqtt_v1
   alias: Prise Aqara - Heures Creuses et batterie EcoFlow

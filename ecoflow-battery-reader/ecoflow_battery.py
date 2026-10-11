@@ -57,7 +57,7 @@ def load_config(path, observe=False):
     if not isinstance(cfg, dict):
         raise SafeError('config_invalid')
     cfg.setdefault('api_host', 'https://api-e.ecoflow.com')
-    cfg.setdefault('instance_id', 'ecoflow-bridge-site-batterie')
+    cfg.setdefault('instance_id', 'ecoflow-bridge')
     cfg.setdefault('snapshot_interval', 60)
     cfg.setdefault('freshness_seconds', 180)
     cfg.setdefault('topic_prefix', 'ecoflow/delta3classic')

@@ -12,3 +12,5 @@ Source consultée le 11 octobre 2026.
 - SHA-256 du descripteur extrait : `c34e0f429a358dcafb94be7293fbd8d200f6700fbc929d7557affc7a2d83634a`.
 
 Le schéma documente un protocole applicatif non officiel, susceptible d'évoluer. Le lecteur ne télécharge aucun code ou schéma au démarrage. Il décode les types de rapports connus et ignore les champs/rapports non reconnus. Les requêtes de lecture utilisent l'enveloppe « get all » décrite dans le fichier `devices/internal/delta3.py` du même projet.
+
+Le reste du dépôt est distribué sous licence Apache 2.0 (voir `LICENSE` à la racine).

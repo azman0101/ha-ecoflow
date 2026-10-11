@@ -8,7 +8,7 @@ Rendez-vous dans l'onglet **Configuration** du module complémentaire :
 
 1. **email** : Votre adresse email EcoFlow (identique à l'application mobile EcoFlow).
 2. **password** : Votre mot de passe EcoFlow.
-3. **device_sn** : Numéro de série de la batterie (ex: `P321ZE1APJ480076`).
+3. **device_sn** : Numéro de série de la batterie (visible dans l'application EcoFlow, ex. `P321XXXXXXXXXXXX`).
 4. **local_mqtt** :
    - `host` : `core-mosquitto` (par défaut pour le broker Mosquitto de HA) ou l'IP de HA.
    - `port` : `1883`
@@ -18,3 +18,7 @@ Rendez-vous dans l'onglet **Configuration** du module complémentaire :
 ## Capteurs Home Assistant
 
 Ajoutez la configuration des capteurs dans votre `configuration.yaml` (fichier `homeassistant.yaml` du dépôt).
+
+## Transparence
+
+Ce module est **entièrement généré par IA** et n'est pas affilié à EcoFlow. Il utilise l'API cloud applicative non documentée d'EcoFlow en lecture seule. Relisez le code avant utilisation — voir le [README du dépôt](https://github.com/azman0101/ha-ecoflow#️-transparence--code-100--généré-par-ia).

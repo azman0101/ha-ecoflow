@@ -1,5 +1,8 @@
-ARG BUILD_FROM=python:3.13-slim
-FROM $BUILD_FROM
+FROM python:3.13-slim
+
+LABEL org.opencontainers.image.source="https://github.com/azman0101/ha-ecoflow" \
+      org.opencontainers.image.description="EcoFlow DELTA 3 Reader - Home Assistant add-on" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 WORKDIR /app
 

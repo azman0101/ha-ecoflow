@@ -1,0 +1,86 @@
+name: Release
+
+# Builds and publishes the multi-arch add-on image when a GitHub release is published.
+# The release tag must equal `version` in ecoflow-battery-reader/config.yaml.
+
+on:
+  release:
+    types: [published]
+
+env:
+  ARCHITECTURES: '["amd64", "aarch64"]'
+  IMAGE_NAME: ecoflow-delta3-reader
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    name: Check tag matches add-on version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compare
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' ecoflow-battery-reader/config.yaml)
+          echo "tag=$TAG config.yaml version=$version"
+          [ -n "$version" ] && [ "$TAG" = "$version" ] || { echo "::error::Release tag must equal config.yaml version"; exit 1; }
+
+  init:
+    name: Prepare build matrix
+    needs: check-version
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.09.0
+        id: matrix
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          image-name: ${{ env.IMAGE_NAME }}
+
+  build:
+    name: Build ${{ matrix.arch }}
+    needs: init
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write   # Cosign keyless signing
+      packages: write   # Push to GHCR
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.init.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: home-assistant/builder/actions/build-image@2026.09.0
+        with:
+          arch: ${{ matrix.arch }}
+          context: ecoflow-battery-reader
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image: ${{ matrix.image }}
+          image-tags: |
+            ${{ github.event.release.tag_name }}
+            latest
+          push: "true"
+          skip-existing: ${{ github.event.release.tag_name }}
+          version: ${{ github.event.release.tag_name }}
+
+  manifest:
+    name: Publish multi-arch manifest
+    needs: [init, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+    steps:
+      - uses: home-assistant/builder/actions/publish-multi-arch-manifest@2026.09.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image-name: ${{ env.IMAGE_NAME }}
+          image-tags: |
+            ${{ github.event.release.tag_name }}
+            latest
+          skip-existing: ${{ github.event.release.tag_name }}

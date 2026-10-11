@@ -17,7 +17,7 @@ if not opts_path.exists():
 cfg = json.loads(opts_path.read_text(encoding='utf-8'))
 
 cfg.setdefault('api_host', 'https://api-e.ecoflow.com')
-cfg.setdefault('instance_id', 'ecoflow-bridge-site-batterie')
+cfg.setdefault('instance_id', 'ecoflow-bridge')
 cfg.setdefault('snapshot_interval', 60)
 cfg.setdefault('freshness_seconds', 180)
 cfg.setdefault('topic_prefix', 'ecoflow/delta3classic')

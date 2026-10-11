@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Lint & tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: ecoflow-battery-reader/requirements*.txt
+      - name: Install dependencies
+        working-directory: ecoflow-battery-reader
+        run: python -m pip install -r requirements-test.txt ruff yamllint
+      - name: Ruff
+        working-directory: ecoflow-battery-reader
+        run: ruff check --select E9,F,B .
+      - name: Unit tests
+        working-directory: ecoflow-battery-reader
+        run: python -B -m unittest -v test_ecoflow_battery.py
+      - name: YAML lint (add-on and workflows)
+        run: >-
+          yamllint -d '{extends: relaxed, rules: {line-length: disable}}'
+          ecoflow-battery-reader/config.yaml repository.yaml .github
+
+  addon-lint:
+    name: Home Assistant add-on linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: frenck/action-app-linter@v2
+        with:
+          path: ./ecoflow-battery-reader
+
+  dockerfile:
+    name: Dockerfile lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ecoflow-battery-reader/Dockerfile
+      - name: Build image (no push)
+        run: docker build ecoflow-battery-reader
