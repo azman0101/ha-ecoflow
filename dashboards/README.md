@@ -36,20 +36,12 @@ Ce dossier contient le modèle officiel de tableau de bord Lovelace pour supervi
      - `YOUR_AUTOMATION` par l'identifiant de votre automatisation (ex: `automation.scheduled_charge_window_with_early_stop`)
 7. Collez le résultat dans l'éditeur et cliquez sur **Enregistrer**.
 
----
+### Personnalisation simple
 
-### Méthode 2 : Générateur automatique (en ligne de commande)
+Le fichier [`ecoflow_dashboard.yaml`](ecoflow_dashboard.yaml) utilise des noms explicites en majuscules faciles à remplacer avec la fonction Rechercher / Remplacer (`Ctrl+H` / `Cmd+F`) de votre éditeur :
+- `YOUR_PLUG_SWITCH` : l'interrupteur de la prise (ex: `switch.prise_canape`)
+- `YOUR_PLUG_POWER` : le capteur de puissance de la prise (ex: `sensor.prise_canape_power`)
+- `YOUR_PLUG_ENERGY` : le capteur d'énergie de la prise (ex: `sensor.prise_canape_energy`)
+- `YOUR_PLUG_CURRENT` : le capteur de courant de la prise (optionnel, supprimer si non disponible)
+- `YOUR_AUTOMATION` : l'automatisation issue du blueprint (`automation.scheduled_charge_window_with_early_stop`)
 
-Un script Python est disponible dans `scripts/generate_dashboard.py` pour générer automatiquement le fichier personnalisé :
-
-```bash
-python3 scripts/generate_dashboard.py \
-  --switch switch.aqara_smart_plug_eu_2 \
-  --power sensor.aqara_smart_plug_eu_power_2 \
-  --energy sensor.aqara_smart_plug_eu_energy_2 \
-  --current sensor.aqara_smart_plug_eu_active_current_2 \
-  --automation automation.scheduled_charge_window_with_early_stop \
-  --output mon_dashboard.yaml
-```
-
-Il ne vous reste plus qu'à coller le contenu de `mon_dashboard.yaml` dans Home Assistant !

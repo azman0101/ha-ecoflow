@@ -50,7 +50,7 @@ Un modèle complet et personnalisable de tableau de bord est disponible dans le 
 - Graphiques de comparaison de puissances et chronologie 48h des cycles de charge ;
 - Journal d'événements (logbook) horodaté des arrêts/démarrages.
 
-Consultez [`dashboards/README.md`](dashboards/README.md) pour les instructions d'import en un clic ou utilisez le générateur `scripts/generate_dashboard.py`.
+Consultez [`dashboards/README.md`](dashboards/README.md) pour les instructions simples d'importation dans Home Assistant.
 
 ## ⚠️ Transparence : code 100 % généré par IA
 
