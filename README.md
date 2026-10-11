@@ -41,7 +41,19 @@ Ou, dans Home Assistant : *Paramètres → Automatisations → Blueprints → Im
 `https://github.com/azman0101/ha-ecoflow/blob/main/blueprints/automation/azman0101/scheduled_charge_window.yaml`.
 Vous choisissez ensuite la prise, le capteur, les heures de début et de fin dans l'interface.
 
+## Tableau de bord Lovelace (optionnel)
+
+Un modèle complet et personnalisable de tableau de bord est disponible dans le dossier [`dashboards/`](dashboards/) :
+- Jauge et niveau de batterie en temps réel ;
+- Affichage de la cible de recharge (%) et témoin d'arrêt anticipé ;
+- Suivi de la prise connectée (contrôle, puissance, énergie, courant) ;
+- Graphiques de comparaison de puissances et chronologie 48h des cycles de charge ;
+- Journal d'événements (logbook) horodaté des arrêts/démarrages.
+
+Consultez [`dashboards/README.md`](dashboards/README.md) pour les instructions d'import en un clic ou utilisez le générateur `scripts/generate_dashboard.py`.
+
 ## ⚠️ Transparence : code 100 % généré par IA
+
 
 **L'intégralité de ce dépôt — code Python, Dockerfile, configuration du module, blueprint Home Assistant, tests, documentation et workflows GitHub Actions — a été générée par des assistants d'intelligence artificielle** (OpenAI Codex et Anthropic Claude). Aucune ligne n'a été écrite à la main.
 

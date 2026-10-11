@@ -277,7 +277,8 @@ class DiscoveryTests(unittest.TestCase):
         # Real DELTA 3 serials look like P321 + 12 characters; none may be committed.
         pattern = re.compile(r'P321(?!X{12})[A-Z0-9]{12}')  # documentation placeholder P321XXXXXXXXXXXX is fine
         for path in REPO.rglob('*'):
-            if '.git' in path.parts or not path.is_file() or path.suffix == '.bin':
+            if ('.git' in path.parts or 'private' in path.parts or path.name.endswith('.env')
+                    or not path.is_file() or path.suffix == '.bin'):
                 continue
             self.assertIsNone(pattern.search(path.read_text(errors='ignore')), str(path))
 

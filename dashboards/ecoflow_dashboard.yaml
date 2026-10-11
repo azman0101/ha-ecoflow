@@ -1,0 +1,161 @@
+# ==============================================================================
+# TABLEAU DE BORD ECOFLOW DELTA 3 (Lovelace Dashboard)
+# Dépôt : https://github.com/azman0101/ha-ecoflow
+#
+# INSTRUCTIONS DE PERSONNALISATION :
+# 1. Les entités EcoFlow (sensor.ecoflow_*) sont générées automatiquement par
+#    l'Add-on via MQTT Discovery. Vous n'avez pas besoin de les modifier.
+# 2. Remplacez les 4 identifiants de prise ci-dessous par ceux de votre matériel :
+#    - YOUR_PLUG_SWITCH  : Interrupteur de la prise (ex: switch.aqara_smart_plug_eu_2)
+#    - YOUR_PLUG_POWER   : Puissance mesurée en W   (ex: sensor.aqara_smart_plug_eu_power_2)
+#    - YOUR_PLUG_ENERGY  : Énergie totale en kWh    (ex: sensor.aqara_smart_plug_eu_energy_2)
+#    - YOUR_PLUG_CURRENT : Courant mesuré en A      (ex: sensor.aqara_smart_plug_eu_active_current_2)
+# 3. YOUR_AUTOMATION     : Automatisation Blueprint  (ex: automation.scheduled_charge_window_with_early_stop)
+# ==============================================================================
+
+title: EcoFlow DELTA 3
+views:
+  - title: Supervision & Recharge
+    path: recharge
+    icon: mdi:battery-charging-high
+    badges:
+      - type: entity
+        entity: sensor.ecoflow_batterie
+        name: Batterie
+      - type: entity
+        entity: sensor.ecoflow_plafond_charge
+        name: Cible
+      - type: entity
+        entity: YOUR_PLUG_SWITCH
+        name: Prise
+      - type: entity
+        entity: binary_sensor.ecoflow_charge_cible_atteinte
+        name: Cible atteinte
+      - type: entity
+        entity: binary_sensor.ecoflow_collecteur_connecte
+        name: Passerelle
+    cards:
+      - type: gauge
+        entity: sensor.ecoflow_batterie
+        name: Niveau de batterie actuel
+        unit: '%'
+        needle: true
+        min: 0
+        max: 100
+        severity:
+          red: 0
+          yellow: 20
+          green: 80
+
+      - type: entities
+        title: 🎯 Cible de recharge & Objectifs
+        show_header_toggle: false
+        entities:
+          - entity: sensor.ecoflow_plafond_charge
+            name: Cible configurée (Plafond)
+            icon: mdi:target
+          - entity: sensor.ecoflow_seuil_decharge
+            name: Seuil minimal de décharge
+            icon: mdi:battery-arrow-down
+          - entity: binary_sensor.ecoflow_charge_cible_atteinte
+            name: Objectif atteint (Arrêt anticipé)
+            icon: mdi:check-circle-outline
+          - entity: YOUR_AUTOMATION
+            name: Automatisation programmée
+            icon: mdi:clock-check-outline
+
+      - type: entities
+        title: 🔌 Prise de charge
+        show_header_toggle: false
+        entities:
+          - entity: YOUR_PLUG_SWITCH
+            name: Alimentation prise
+          - entity: YOUR_PLUG_POWER
+            name: Puissance instantanée mesurée
+            icon: mdi:flash
+          - entity: YOUR_PLUG_ENERGY
+            name: Énergie totale consommée
+            icon: mdi:counter
+          - entity: YOUR_PLUG_CURRENT
+            name: Courant mesuré
+            icon: mdi:current-ac
+
+      - type: entities
+        title: ⚡ Télémétrie EcoFlow
+        show_header_toggle: false
+        entities:
+          - entity: sensor.ecoflow_puissance_entree
+            name: Puissance entrée totale
+            icon: mdi:import
+          - entity: sensor.ecoflow_puissance_secteur
+            name: Entrée secteur (AC)
+            icon: mdi:power-plug
+          - entity: sensor.ecoflow_puissance_solaire
+            name: Entrée solaire (PV)
+            icon: mdi:solar-power
+          - entity: sensor.ecoflow_puissance_sortie
+            name: Puissance sortie
+            icon: mdi:export
+          - entity: sensor.ecoflow_etat_charge
+            name: Mode de fonctionnement
+            icon: mdi:state-machine
+          - entity: binary_sensor.ecoflow_telemetrie_recente
+            name: Fraîcheur des données (< 3 min)
+            icon: mdi:update
+
+      - type: history-graph
+        title: 📈 Puissance : Prise vs Entrées EcoFlow (12h)
+        hours_to_show: 12
+        entities:
+          - entity: YOUR_PLUG_POWER
+            name: Puissance mesurée par la prise (W)
+          - entity: sensor.ecoflow_puissance_entree
+            name: Puissance totale entrée EcoFlow (W)
+          - entity: sensor.ecoflow_puissance_secteur
+            name: Entrée secteur AC (W)
+          - entity: sensor.ecoflow_puissance_solaire
+            name: Entrée solaire PV (W)
+
+      - type: history-graph
+        title: 🔋 Évolution de la batterie vs Cible (12h)
+        hours_to_show: 12
+        entities:
+          - entity: sensor.ecoflow_batterie
+            name: Batterie EcoFlow (%)
+          - entity: sensor.ecoflow_plafond_charge
+            name: Cible configurée (%)
+
+  - title: Historique & Calendrier
+    path: historique
+    icon: mdi:calendar-clock
+    cards:
+      - type: history-graph
+        title: ⏱️ Chronologie des recharges & arrêts anticipés (48h)
+        hours_to_show: 48
+        entities:
+          - entity: YOUR_PLUG_SWITCH
+            name: Prise de charge (ON = En charge)
+          - entity: binary_sensor.ecoflow_charge_cible_atteinte
+            name: Arrêt anticipé (Cible atteinte)
+          - entity: YOUR_AUTOMATION
+            name: Automatisation programmée
+
+      - type: logbook
+        title: 📅 Journal détaillé des événements de recharge (48h)
+        hours_to_show: 48
+        entities:
+          - YOUR_AUTOMATION
+          - YOUR_PLUG_SWITCH
+          - binary_sensor.ecoflow_charge_cible_atteinte
+          - sensor.ecoflow_plafond_charge
+
+      - type: statistics-graph
+        title: ⚡ Consommation cumulée de la prise (kWh)
+        period: hour
+        chart_type: bar
+        stat_types:
+          - change
+        days_to_show: 7
+        entities:
+          - entity: YOUR_PLUG_ENERGY
+            name: Énergie consommée par heure
