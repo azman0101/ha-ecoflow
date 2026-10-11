@@ -2,6 +2,11 @@
 
 Ce dépôt contient le module complémentaire Home Assistant pour connecter et intégrer les batteries EcoFlow (notamment la **DELTA 3 Classic**) en temps réel via MQTT.
 
+> [!IMPORTANT]
+> **Ce dépôt est un dépôt de modules complémentaires (add-ons) Home Assistant, pas une intégration HACS.**
+> Ne l'ajoutez pas dans HACS : celui-ci répondra « The repository does not seem to be a integration, but an add-on repository. HACS does not manage add-ons. »
+> Utilisez la boutique de modules complémentaires de Home Assistant (voir ci-dessous). Elle n'existe que sous Home Assistant OS ou Supervised ; avec Home Assistant Container ou Core, utilisez le conteneur Docker décrit dans [`ecoflow-battery-reader/README.md`](ecoflow-battery-reader/README.md).
+
 ## Installation du module complémentaire
 
 1. Dans Home Assistant, allez dans **Paramètres** > **Modules complémentaires** > **Boutique des modules complémentaires** (Add-on Store).
