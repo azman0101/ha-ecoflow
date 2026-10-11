@@ -1,7 +1,10 @@
 name: Release
 
 # Builds and publishes the multi-arch add-on image when a GitHub release is published.
-# The release tag must equal `version` in ecoflow-battery-reader/config.yaml.
+# The release tag must be a SemVer 2.0.0 version, optionally prefixed with "v"
+# (1.2.3, v1.2.3, 1.2.3-rc.1), and must equal `version` in
+# ecoflow-battery-reader/config.yaml once the prefix is removed.
+# SemVer build metadata ("+...") is rejected: it is not valid in a Docker tag.
 
 on:
   release:
@@ -16,17 +19,38 @@ permissions:
 
 jobs:
   check-version:
-    name: Check tag matches add-on version
+    name: Check tag is SemVer and matches add-on version
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tags: ${{ steps.check.outputs.tags }}
     steps:
       - uses: actions/checkout@v7
-      - name: Compare
+      - name: Validate
+        id: check
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          version=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' ecoflow-battery-reader/config.yaml)
-          echo "tag=$TAG config.yaml version=$version"
-          [ -n "$version" ] && [ "$TAG" = "$version" ] || { echo "::error::Release tag must equal config.yaml version"; exit 1; }
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+          version="${TAG#v}"
+          if ! [[ "$version" =~ $semver ]]; then
+            echo "::error::Release tag '$TAG' is not SemVer (expected X.Y.Z or vX.Y.Z, optional -prerelease, no +build metadata)"
+            exit 1
+          fi
+          config=$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\} *$/\1/p' ecoflow-battery-reader/config.yaml)
+          echo "tag=$TAG version=$version config.yaml version=$config"
+          if [ "$version" != "$config" ]; then
+            echo "::error::Release version '$version' (from tag '$TAG') must equal config.yaml version '$config'"
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tags<<EOF"
+            echo "$version"
+            # Pre-releases never move the 'latest' tag.
+            [[ "$version" == *-* ]] || echo "latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   init:
     name: Prepare build matrix
@@ -43,7 +67,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.arch }}
-    needs: init
+    needs: [check-version, init]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -60,16 +84,14 @@ jobs:
           context: ecoflow-battery-reader
           container-registry-password: ${{ secrets.GITHUB_TOKEN }}
           image: ${{ matrix.image }}
-          image-tags: |
-            ${{ github.event.release.tag_name }}
-            latest
+          image-tags: ${{ needs.check-version.outputs.tags }}
           push: "true"
-          skip-existing: ${{ github.event.release.tag_name }}
-          version: ${{ github.event.release.tag_name }}
+          skip-existing: ${{ needs.check-version.outputs.version }}
+          version: ${{ needs.check-version.outputs.version }}
 
   manifest:
     name: Publish multi-arch manifest
-    needs: [init, build]
+    needs: [check-version, init, build]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -80,7 +102,5 @@ jobs:
           architectures: ${{ env.ARCHITECTURES }}
           container-registry-password: ${{ secrets.GITHUB_TOKEN }}
           image-name: ${{ env.IMAGE_NAME }}
-          image-tags: |
-            ${{ github.event.release.tag_name }}
-            latest
-          skip-existing: ${{ github.event.release.tag_name }}
+          image-tags: ${{ needs.check-version.outputs.tags }}
+          skip-existing: ${{ needs.check-version.outputs.version }}
