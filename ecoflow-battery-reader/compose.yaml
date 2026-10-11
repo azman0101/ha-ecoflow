@@ -1,0 +1,16 @@
+services:
+  ecoflow-mqtt:
+    build: .
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./private/ecoflow.json:/run/secrets/ecoflow.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

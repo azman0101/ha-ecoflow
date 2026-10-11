@@ -1,0 +1,7 @@
+# Secrets and credentials
+private/
+*.env
+credentials.json
+.venv*/
+__pycache__/
+*.pyc
