@@ -1,17 +1,26 @@
-"""Offline tests: synthetic protobuf, fake MQTT clients, YAML/Jinja safety checks."""
-from datetime import datetime, timedelta, timezone
+"""Offline tests: synthetic protobuf, fake MQTT clients, discovery payloads, add-on options, blueprint."""
 import json
+import os
 from pathlib import Path
+import re
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest import mock
 
+import yaml
+
 import ecoflow_battery as reader
+import ecoflow_discovery as discovery
+import prepare_config as prepare
+
+ROOT = Path(__file__).resolve().parent
+REPO = ROOT.parent
 
 CFG = {'api_host': 'https://api-e.ecoflow.com', 'email': 'test@example.invalid', 'password': 'TESTPASSWORD',
        'device_sn': 'TESTSN', 'instance_id': 'test-instance', 'snapshot_interval': 60,
-       'freshness_seconds': 180, 'topic_prefix': 'ecoflow/delta3classic',
+       'freshness_seconds': 180, 'topic_prefix': 'ecoflow/delta3classic', 'discovery': True,
+       'discovery_prefix': 'homeassistant', 'target_margin': 0.2,
        'local_mqtt': {'host': 'test.invalid', 'port': 1883, 'username': 'test', 'password': 'test', 'tls': False}}
 
 
@@ -198,130 +207,407 @@ class BridgeTests(unittest.TestCase):
                 reader.login(CFG)
 
 
-class TemplateTests(unittest.TestCase):
+# --- values of the hand-written 1.0.x YAML: entities of an existing installation must keep them ----------------
+LEGACY_ENTITIES = {
+    'soc': ('ecoflow_classic_mqtt_soc_v1', 'sensor.ecoflow_batterie'),
+    'charge_limit': ('ecoflow_classic_mqtt_charge_limit_v1', 'sensor.ecoflow_plafond_charge'),
+    'discharge_limit': ('ecoflow_classic_mqtt_discharge_limit_v1', 'sensor.ecoflow_seuil_decharge'),
+    'power_in': ('ecoflow_classic_mqtt_power_in_v1', 'sensor.ecoflow_puissance_entree'),
+    'power_out': ('ecoflow_classic_mqtt_power_out_v1', 'sensor.ecoflow_puissance_sortie'),
+    'power_ac_in': ('ecoflow_classic_mqtt_power_ac_in_v1', 'sensor.ecoflow_puissance_secteur'),
+    'power_pv': ('ecoflow_classic_mqtt_power_pv_v1', 'sensor.ecoflow_puissance_solaire'),
+    'charge_state_code': ('ecoflow_classic_mqtt_charge_state_code_v1', 'sensor.ecoflow_etat_charge_brut'),
+    'charge_state': ('ecoflow_classic_mqtt_charge_state_v1', 'sensor.ecoflow_etat_charge'),
+    'telemetry_fresh': ('ecoflow_classic_telemetry_fresh_v1', 'binary_sensor.ecoflow_telemetrie_recente'),
+    'charge_target_reached': ('ecoflow_classic_charge_target_reached_v1',
+                              'binary_sensor.ecoflow_charge_cible_atteinte'),
+    'collector_connected': ('ecoflow_classic_mqtt_connection_v1', 'binary_sensor.ecoflow_collecteur_connecte'),
+}
+
+
+class DiscoveryTests(unittest.TestCase):
     def setUp(self):
-        import yaml
-        from jinja2 import Environment, StrictUndefined
-        root = Path(__file__).parent
-        self.ha = yaml.safe_load((root / 'homeassistant.yaml').read_text())
-        self.automation = yaml.safe_load((root / 'automations.yaml').read_text())[0]
-        self.ui = yaml.safe_load((root / 'automation-ui.yaml').read_text())
-        self.now = datetime.now(timezone.utc)
-        self.data = {'sensor.ecoflow_batterie': '89.9', 'sensor.ecoflow_plafond_charge': '90',
-                     'binary_sensor.ecoflow_collecteur_connecte': 'on',
-                     'binary_sensor.ecoflow_telemetrie_recente': 'on'}
-        self.attrs = {'sensor.ecoflow_batterie': {'received_at': self.now.timestamp()-2},
-                      'sensor.ecoflow_plafond_charge': {'received_at': self.now.timestamp()-2}}
-        self.full = SimpleNamespace(state='on', last_changed=self.now-timedelta(seconds=130))
-        class States:
-            def __call__(obj, entity):
-                return self.data.get(entity, 'unknown')
-            @property
-            def binary_sensor(obj):
-                return SimpleNamespace(ecoflow_charge_cible_atteinte=self.full)
-        def is_number(value):
-            try:
-                import math
-                return not isinstance(value, bool) and math.isfinite(float(value))
-            except (TypeError, ValueError):
-                return False
-        def as_timestamp(value, default=None):
-            try:
-                return value.timestamp() if isinstance(value, datetime) else float(value)
-            except (TypeError, ValueError):
-                return default
-        self.env = Environment(undefined=StrictUndefined)
-        self.env.globals.update(states=States(), state_attr=lambda entity, key: self.attrs.get(entity, {}).get(key),
-                                is_state=lambda entity, value: self.data.get(entity) == value,
-                                is_number=is_number, now=lambda: self.now, as_timestamp=as_timestamp)
-        binary = self.ha['template'][0]['binary_sensor']
-        self.fresh = binary[0]
-        self.full_template = binary[1]
-        choices = self.automation['actions'][0]['choose']
-        self.already_full = choices[1]['sequence'][0]['choose'][0]['conditions'][0]['value_template']
-        self.stop_early = choices[2]['conditions'][-1]['value_template']
+        self.payload = discovery.build_payload(CFG, '9.9.9')
+        self.components = self.payload['components']
 
-    def truth(self, template):
-        return self.env.from_string(template).render().strip() == 'True'
+    def test_unique_ids_and_entity_ids_match_the_legacy_yaml(self):
+        self.assertEqual({k: (c['unique_id'], c['default_entity_id']) for k, c in self.components.items()},
+                         LEGACY_ENTITIES)
 
-    def test_stop_near_configured_90_not_100(self):
-        self.assertTrue(self.truth(self.full_template['availability']))
-        self.assertTrue(self.truth(self.full_template['state']))
-        self.assertTrue(self.truth(self.already_full))
-        self.assertTrue(self.truth(self.stop_early))
-        self.data['sensor.ecoflow_batterie'] = '89.04'
-        self.assertFalse(self.truth(self.full_template['state']))
-        self.assertFalse(self.truth(self.stop_early))
+    def test_topics(self):
+        self.assertEqual(discovery.discovery_topic(CFG), 'homeassistant/device/ecoflow_testsn/config')
+        self.assertEqual(discovery.status_topic(CFG), 'homeassistant/status')
+        custom = {**CFG, 'discovery_prefix': 'ha/disc'}
+        self.assertEqual(discovery.discovery_topic(custom), 'ha/disc/device/ecoflow_testsn/config')
 
-    def test_zero_never_stops_charge(self):
-        self.data['sensor.ecoflow_batterie'] = '0'
-        self.assertTrue(self.truth(self.fresh['state']))
-        self.assertTrue(self.truth(self.full_template['availability']))
-        self.assertFalse(self.truth(self.full_template['state']))
-        self.assertFalse(self.truth(self.stop_early))
+    def test_one_device_with_a_serial_derived_identifier_and_origin(self):
+        self.assertEqual(self.payload['device']['identifiers'], ['ecoflow_testsn'])
+        self.assertEqual(self.payload['device']['manufacturer'], 'EcoFlow')
+        self.assertEqual(self.payload['origin']['sw_version'], '9.9.9')
+        self.assertNotIn('serial_number', self.payload['device'])
 
-    def test_stale_either_metric_blocks_early_cutoff(self):
-        for entity in ('sensor.ecoflow_batterie', 'sensor.ecoflow_plafond_charge'):
-            self.attrs[entity]['received_at'] = self.now.timestamp()-180
-            self.assertFalse(self.truth(self.full_template['availability']))
-            self.assertFalse(self.truth(self.already_full))
-            self.assertFalse(self.truth(self.stop_early))
-            self.attrs[entity]['received_at'] = self.now.timestamp()-2
+    def test_payload_is_serialisable_and_every_component_has_a_platform(self):
+        json.dumps(self.payload, ensure_ascii=False)
+        self.assertEqual({c['platform'] for c in self.components.values()}, {'sensor', 'binary_sensor'})
 
-    def test_missing_future_and_invalid_soc_blocks_cutoff(self):
-        for value in ('unavailable', 'unknown', '-1', '101', 'NaN'):
-            self.data['sensor.ecoflow_batterie'] = value
-            self.assertFalse(self.truth(self.full_template['availability']))
-            self.assertFalse(self.truth(self.stop_early))
-        self.data['sensor.ecoflow_batterie'] = '90'
-        self.attrs['sensor.ecoflow_batterie']['received_at'] = self.now.timestamp()+1
-        self.assertFalse(self.truth(self.stop_early))
+    def test_measurements_expire_and_follow_collector_availability(self):
+        for key, component in self.components.items():
+            if key == 'collector_connected':
+                self.assertNotIn('availability_topic', component)
+                self.assertEqual(component['state_topic'], 'ecoflow/delta3classic/availability')
+                continue
+            self.assertEqual(component['expire_after'], 180, key)
+            self.assertEqual(component['availability_topic'], 'ecoflow/delta3classic/availability', key)
+            self.assertEqual(component['state_topic'], 'ecoflow/delta3classic/' + key)
 
-    def test_transport_disconnect_blocks_cutoff(self):
-        self.data['binary_sensor.ecoflow_collecteur_connecte'] = 'off'
-        self.assertFalse(self.truth(self.fresh['state']))
-        self.assertFalse(self.truth(self.already_full))
-        self.assertFalse(self.truth(self.stop_early))
+    def test_sensors_expose_received_at_and_binary_sensors_use_plain_payloads(self):
+        for key, component in self.components.items():
+            if component['platform'] == 'sensor':
+                self.assertIn('received_at', component['json_attributes_template'], key)
+                self.assertEqual(component['value_template'], '{{ value_json.value }}')
+            else:
+                self.assertNotIn('value_template', component, key)
 
-    def test_two_minutes_confirmation_required(self):
-        self.full.last_changed = self.now-timedelta(seconds=119)
-        self.assertFalse(self.truth(self.stop_early))
-        self.full.last_changed = self.now-timedelta(seconds=120)
-        self.assertTrue(self.truth(self.stop_early))
-        self.full = None
-        self.assertFalse(self.truth(self.stop_early))
+    def test_components_cover_exactly_what_the_bridge_publishes(self):
+        published = set(reader.FIELDS) | {'charge_state', 'telemetry_fresh', 'charge_target_reached'}
+        self.assertEqual(set(discovery.ENTITIES), published)
+        self.assertEqual(set(self.components), published | {'collector_connected'})
 
-    def test_0420_cutoff_independent_of_mqtt(self):
-        choice = self.automation['actions'][0]['choose'][0]
-        self.assertEqual(choice['conditions'], [{'condition': 'trigger', 'id': 'eteindre'}])
-        self.assertEqual(choice['sequence'][0]['action'], 'switch.turn_off')
-        trigger = next(t for t in self.automation['triggers'] if t['id'] == 'eteindre')
-        self.assertEqual(trigger['at'], '04:20:00')
-        self.assertEqual(self.automation['conditions'], [])
+    def test_no_real_device_serial_anywhere_in_the_repository(self):
+        # Real DELTA 3 serials look like P321 + 12 characters; none may be committed.
+        pattern = re.compile(r'P321(?!X{12})[A-Z0-9]{12}')  # documentation placeholder P321XXXXXXXXXXXX is fine
+        for path in REPO.rglob('*'):
+            if '.git' in path.parts or not path.is_file() or path.suffix == '.bin':
+                continue
+            self.assertIsNone(pattern.search(path.read_text(errors='ignore')), str(path))
 
-    def test_ui_and_file_automation_identical(self):
-        self.assertEqual({k:v for k,v in self.automation.items() if k != 'id'}, self.ui)
 
-    def test_no_retained_measurement_reliance_and_topics_match(self):
-        sensors = self.ha['mqtt']['sensor']
-        self.assertEqual(len(sensors), 9)
-        for sensor in sensors:
-            self.assertEqual(sensor['expire_after'], 180)
-            key = sensor['state_topic'].split('/')[-1]
-            self.assertIn(key, list(reader.FIELDS)+['charge_state'])
-            self.assertIn('received_at', sensor['json_attributes_template'])
-        # All string templates in the delivered YAML must parse.
-        def walk(value):
-            if isinstance(value, dict):
-                for item in value.values():
-                    walk(item)
-            elif isinstance(value, list):
-                for item in value:
-                    walk(item)
-            elif isinstance(value, str) and ('{{' in value or '{%' in value):
-                self.env.parse(value)
-        walk(self.ha)
-        walk(self.automation)
+class DerivedStateTests(unittest.TestCase):
+    NOW = 500
+
+    def bridge(self, soc=None, limit=None, soc_age=2, limit_age=2, subscribed=True, **overrides):
+        bridge = reader.Bridge({**CFG, **overrides}, observe=False)
+        if soc is not None:
+            bridge.metrics['soc'] = reader.Metric(soc, self.NOW - soc_age, 'test')
+        if limit is not None:
+            bridge.metrics['charge_limit'] = reader.Metric(limit, self.NOW - limit_age, 'test')
+        if subscribed:
+            bridge.cloud_subscribed.set()
+        return bridge
+
+    def states(self, bridge):
+        return bridge.derived_states(self.NOW)
+
+    def test_target_is_the_configured_limit_minus_margin_not_100(self):
+        self.assertEqual(self.states(self.bridge(89.8, 90))['charge_target_reached'], 'ON')
+        self.assertEqual(self.states(self.bridge(89.79, 90))['charge_target_reached'], 'OFF')
+        self.assertEqual(self.states(self.bridge(100, 90))['charge_target_reached'], 'ON')
+
+    def test_margin_is_configurable(self):
+        self.assertEqual(self.states(self.bridge(89.99, 90, target_margin=0))['charge_target_reached'], 'OFF')
+        self.assertEqual(self.states(self.bridge(88, 90, target_margin=2))['charge_target_reached'], 'ON')
+
+    def test_zero_soc_never_means_full(self):
+        states = self.states(self.bridge(0, 90))
+        self.assertEqual(states['charge_target_reached'], 'OFF')
+        self.assertEqual(states['telemetry_fresh'], 'ON')
+
+    def test_stale_or_missing_measurement_withholds_the_target(self):
+        for kwargs in ({'soc_age': 180}, {'limit_age': 180}, {'soc_age': -1}):
+            states = self.states(self.bridge(100, 90, **kwargs))
+            self.assertNotIn('charge_target_reached', states, kwargs)
+        self.assertNotIn('charge_target_reached', self.states(self.bridge(100, None)))
+        self.assertNotIn('charge_target_reached', self.states(self.bridge(None, 90)))
+
+    def test_telemetry_fresh_requires_fresh_soc_and_cloud_session(self):
+        self.assertEqual(self.states(self.bridge(50, 90))['telemetry_fresh'], 'ON')
+        self.assertEqual(self.states(self.bridge(50, 90, soc_age=180))['telemetry_fresh'], 'OFF')
+        self.assertEqual(self.states(self.bridge(50, 90, subscribed=False))['telemetry_fresh'], 'OFF')
+        self.assertEqual(self.states(self.bridge())['telemetry_fresh'], 'OFF')
+
+    def test_a_fresh_limit_alone_does_not_make_telemetry_fresh(self):
+        self.assertEqual(self.states(self.bridge(None, 90))['telemetry_fresh'], 'OFF')
+
+    def test_derived_states_are_published_plain_and_not_retained(self):
+        bridge = self.bridge(95, 90)
+        bridge.local, bridge.local.publish = mock.Mock(), mock.Mock()
+        bridge.local_ready.set()
+        with mock.patch.object(reader.time, 'time', return_value=self.NOW):
+            bridge.publish_derived()
+        calls = {c.args[0]: (c.args[1], c.kwargs) for c in bridge.local.publish.call_args_list}
+        self.assertEqual(calls['ecoflow/delta3classic/charge_target_reached'][0], 'ON')
+        self.assertEqual(calls['ecoflow/delta3classic/telemetry_fresh'][0], 'ON')
+        for _, kwargs in calls.values():
+            self.assertFalse(kwargs['retain'])
+
+    def test_observe_mode_publishes_no_derived_state(self):
+        bridge = reader.Bridge(CFG, observe=True)
+        bridge.local = mock.Mock()
+        bridge.local_ready.set()
+        bridge.publish_derived()
+        bridge.local.publish.assert_not_called()
+
+
+class DiscoveryLifecycleTests(unittest.TestCase):
+    TOPIC = 'homeassistant/device/ecoflow_testsn/config'
+
+    def started(self, **overrides):
+        bridge = reader.Bridge({**CFG, **overrides})
+        with mock.patch.object(reader.mqtt, 'Client') as factory:
+            bridge.start_local()
+        return bridge, factory.return_value
+
+    def connect(self, bridge, local):
+        local.on_connect(local, None, None, SimpleNamespace(is_failure=False), None)
+
+    def discovery_calls(self, local):
+        return [c for c in local.publish.call_args_list if c.args[0] == self.TOPIC]
+
+    def test_discovery_is_published_on_connect_without_retain_and_birth_is_subscribed(self):
+        bridge, local = self.started()
+        self.connect(bridge, local)
+        (call,) = self.discovery_calls(local)
+        self.assertFalse(call.kwargs['retain'])
+        self.assertEqual(call.kwargs['qos'], 1)
+        self.assertEqual(json.loads(call.args[1])['device']['identifiers'], ['ecoflow_testsn'])
+        local.subscribe.assert_called_once_with('homeassistant/status', qos=1)
+
+    def test_home_assistant_birth_message_republishes_discovery(self):
+        bridge, local = self.started()
+        self.connect(bridge, local)
+        local.publish.reset_mock()
+        local.on_message(local, None, SimpleNamespace(topic='homeassistant/status', payload=b'offline'))
+        self.assertEqual(self.discovery_calls(local), [])
+        local.on_message(local, None, SimpleNamespace(topic='homeassistant/status', payload=b'online'))
+        self.assertEqual(len(self.discovery_calls(local)), 1)
+        local.on_message(local, None, SimpleNamespace(topic='other/status', payload=b'online'))
+        self.assertEqual(len(self.discovery_calls(local)), 1)
+
+    def test_discovery_can_be_disabled(self):
+        bridge, local = self.started(discovery=False)
+        self.connect(bridge, local)
+        self.assertEqual(self.discovery_calls(local), [])
+        local.subscribe.assert_not_called()
+
+    def test_custom_discovery_prefix(self):
+        bridge, local = self.started(discovery_prefix='ha/disc')
+        self.connect(bridge, local)
+        topics = [c.args[0] for c in local.publish.call_args_list]
+        self.assertIn('ha/disc/device/ecoflow_testsn/config', topics)
+        local.subscribe.assert_called_once_with('ha/disc/status', qos=1)
+
+    def test_nothing_is_published_while_the_broker_connection_is_not_ready(self):
+        bridge = reader.Bridge(CFG)
+        bridge.local = mock.Mock()
+        bridge.publish_discovery()
+        bridge.local.publish.assert_not_called()
+
+
+class ConfigOptionTests(unittest.TestCase):
+    def load(self, **changes):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.json'
+            base = {k: v for k, v in CFG.items() if k not in ('discovery', 'discovery_prefix', 'target_margin')}
+            path.write_text(json.dumps({**base, **changes}))
+            path.chmod(0o600)
+            return reader.load_config(path)
+
+    def test_new_options_have_defaults(self):
+        cfg = self.load()
+        self.assertEqual((cfg['discovery'], cfg['discovery_prefix'], cfg['target_margin']), (True, 'homeassistant', 0.2))
+
+    def test_invalid_values_are_rejected(self):
+        for changes in ({'discovery': 'yes'}, {'discovery_prefix': ''}, {'discovery_prefix': 'a b'},
+                        {'discovery_prefix': '/x'}, {'target_margin': True}, {'target_margin': -0.1},
+                        {'target_margin': 5.1}, {'target_margin': '0.2'}):
+            with self.assertRaises(reader.SafeError, msg=str(changes)):
+                self.load(**changes)
+
+    def test_margin_bounds_are_accepted(self):
+        self.assertEqual(self.load(target_margin=0)['target_margin'], 0)
+        self.assertEqual(self.load(target_margin=5)['target_margin'], 5)
+
+
+class PrepareConfigTests(unittest.TestCase):
+    OPTIONS = {'email': 'test@example.invalid', 'password': 'TESTPASSWORD', 'device_sn': 'TESTSN',
+               'instance_id': 'ecoflow-bridge', 'snapshot_interval': 60, 'freshness_seconds': 180,
+               'topic_prefix': 'ecoflow/delta3classic', 'discovery': True, 'discovery_prefix': 'homeassistant',
+               'target_margin': 0.2,
+               'local_mqtt': {'host': '', 'port': 1883, 'username': '', 'password': '', 'tls': False}}
+    SERVICE = {'host': 'mqtt-service.invalid', 'port': 1883, 'username': 'test', 'password': 'test', 'tls': False}
+
+    def test_empty_host_uses_the_supervisor_mqtt_service(self):
+        cfg = prepare.build_config(self.OPTIONS, fetch_service=lambda: dict(self.SERVICE))
+        self.assertEqual(cfg['local_mqtt'], self.SERVICE)
+
+    def test_manual_broker_is_kept_and_the_supervisor_is_not_asked(self):
+        manual = {'host': 'broker.invalid', 'port': 8883, 'username': 'u', 'password': 'p', 'tls': True}
+        fetch = mock.Mock()
+        cfg = prepare.build_config({**self.OPTIONS, 'local_mqtt': manual}, fetch_service=fetch)
+        fetch.assert_not_called()
+        self.assertEqual(cfg['local_mqtt'], manual)
+
+    def test_missing_service_gives_an_actionable_error_without_secrets(self):
+        def unavailable():
+            raise prepare.PrepareError('no MQTT broker is provided by the Supervisor')
+        with self.assertRaises(prepare.PrepareError) as caught:
+            prepare.build_config(self.OPTIONS, fetch_service=unavailable)
+        message = str(caught.exception)
+        self.assertIn('local_mqtt.host is empty', message)
+        self.assertNotIn('TESTPASSWORD', message)
+
+    def test_unset_and_empty_options_fall_back_to_defaults(self):
+        options = {**self.OPTIONS, 'discovery_prefix': '', 'target_margin': None, 'topic_prefix': None}
+        cfg = prepare.build_config(options, fetch_service=lambda: dict(self.SERVICE))
+        self.assertEqual((cfg['discovery_prefix'], cfg['target_margin'], cfg['topic_prefix']),
+                         ('homeassistant', 0.2, 'ecoflow/delta3classic'))
+
+    def test_supervisor_response_parsing(self):
+        def response(body):
+            handle = mock.MagicMock()
+            handle.__enter__.return_value.read.return_value = json.dumps(body).encode()
+            return handle
+        ok = {'result': 'ok', 'data': {'host': 'core-mosquitto', 'port': 1883, 'username': 'u', 'password': 'p',
+                                       'ssl': False, 'protocol': '3.1.1'}}
+        with mock.patch.dict(os.environ, {'SUPERVISOR_TOKEN': 'TESTTOKEN'}):
+            with mock.patch.object(prepare.request, 'urlopen', return_value=response(ok)) as opened:
+                self.assertEqual(prepare.supervisor_mqtt(),
+                                 {'host': 'core-mosquitto', 'port': 1883, 'username': 'u', 'password': 'p',
+                                  'tls': False})
+            request = opened.call_args.args[0]
+            self.assertEqual(request.full_url, 'http://supervisor/services/mqtt')
+            self.assertEqual(request.get_header('Authorization'), 'Bearer TESTTOKEN')
+            for body in ({'result': 'error'}, {'result': 'ok', 'data': {}}, {'result': 'ok', 'data': {'host': 'h'}}):
+                with mock.patch.object(prepare.request, 'urlopen', return_value=response(body)):
+                    with self.assertRaises(prepare.PrepareError):
+                        prepare.supervisor_mqtt()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(prepare.PrepareError):
+                prepare.supervisor_mqtt()
+
+    def test_main_writes_a_private_file_the_collector_accepts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            options, target = Path(directory) / 'options.json', Path(directory) / 'ecoflow.json'
+            options.write_text(json.dumps(self.OPTIONS))
+            with mock.patch.object(prepare, 'OPTIONS', options), mock.patch.object(prepare, 'TARGET', target), \
+                    mock.patch.object(prepare, 'supervisor_mqtt', return_value=dict(self.SERVICE)):
+                self.assertEqual(prepare.main(), 0)
+            self.assertEqual(oct(target.stat().st_mode & 0o777), '0o600')
+            cfg = reader.load_config(target)
+            self.assertEqual(cfg['local_mqtt']['host'], self.SERVICE['host'])
+            self.assertEqual(cfg['device_sn'], 'TESTSN')
+
+    def test_main_fails_cleanly_when_options_are_missing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(prepare, 'OPTIONS', Path(directory) / 'absent.json'):
+                self.assertEqual(prepare.main(), 1)
+
+
+class AddonMetadataTests(unittest.TestCase):
+    def setUp(self):
+        self.config = yaml.safe_load((ROOT / 'config.yaml').read_text())
+
+    def test_version_matches_the_code(self):
+        self.assertEqual(self.config['version'], reader.__version__)
+
+    def test_every_option_has_a_schema_entry_and_the_collector_understands_it(self):
+        self.assertEqual(set(self.config['options']), set(self.config['schema']))
+        known = (set(prepare.DEFAULTS) - {'api_host'}) | {'email', 'password', 'device_sn', 'local_mqtt'}
+        self.assertEqual(set(self.config['options']), known)
+        self.assertEqual(self.config['options']['freshness_seconds'], 180)
+
+    def test_mqtt_service_is_optional_and_device_serial_is_not_preset(self):
+        self.assertEqual(self.config['services'], ['mqtt:want'])
+        self.assertEqual(self.config['options']['device_sn'], '')
+        self.assertEqual(self.config['options']['local_mqtt']['host'], '')
+
+    def test_docker_context_ships_every_file_the_image_copies(self):
+        copied = re.search(r'^COPY ((?:[\w.-]+ )+)\./$', (ROOT / 'Dockerfile').read_text(), re.M).group(1).split()
+        allowed = (ROOT / '.dockerignore').read_text().split()
+        for name in copied:
+            self.assertTrue((ROOT / name).is_file(), name)
+            self.assertIn('!' + name, allowed, name)
+
+
+class InputTag:
+    def __init__(self, name):
+        self.name = name
+
+
+class BlueprintLoader(yaml.SafeLoader):
+    pass
+
+
+BlueprintLoader.add_constructor('!input', lambda loader, node: InputTag(loader.construct_scalar(node)))
+
+
+class BlueprintTests(unittest.TestCase):
+    PATH = REPO / 'blueprints' / 'automation' / 'azman0101' / 'scheduled_charge_window.yaml'
+
+    def setUp(self):
+        self.text = self.PATH.read_text()
+        self.doc = yaml.load(self.text, Loader=BlueprintLoader)
+        self.meta = self.doc['blueprint']
+
+    def inputs_used(self, node):
+        if isinstance(node, InputTag):
+            yield node.name
+        elif isinstance(node, dict):
+            for value in node.values():
+                yield from self.inputs_used(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from self.inputs_used(value)
+
+    def test_metadata_and_import_url_point_at_this_file(self):
+        self.assertEqual(self.meta['domain'], 'automation')
+        self.assertTrue(self.meta['source_url'].startswith('https://github.com/azman0101/ha-ecoflow/blob/main/'))
+        self.assertTrue(self.meta['source_url'].endswith(str(self.PATH.relative_to(REPO))))
+
+    def test_inputs_defined_and_used_match(self):
+        defined = set(self.meta['input'])
+        used = set(self.inputs_used({k: v for k, v in self.doc.items() if k != 'blueprint'}))
+        self.assertEqual(defined, used)
+
+    def test_nothing_personal_or_vendor_specific_is_hard_coded(self):
+        self.assertNotIn('aqara', self.text.lower())
+        body = yaml.dump({k: v for k, v in self.doc.items() if k != 'blueprint'}, Dumper=yaml.SafeDumper) \
+            if False else self.text.split('\ntriggers:')[1]
+        self.assertIsNone(re.search(r'\b(switch|sensor|binary_sensor|input_boolean)\.[a-z0-9_]+', body))
+
+    def test_end_of_window_always_turns_the_switch_off(self):
+        branch = self.doc['actions'][0]['choose'][0]
+        self.assertEqual(branch['conditions'], [{'condition': 'trigger', 'id': 'end'}])
+        self.assertEqual([a['action'] for a in branch['sequence']], ['homeassistant.turn_off'])
+        self.assertEqual(self.doc['conditions'], [])
+
+    def test_start_turns_on_unless_the_target_is_already_reached(self):
+        branch = self.doc['actions'][0]['choose'][1]
+        inner = branch['sequence'][0]
+        self.assertEqual(inner['choose'][0]['conditions'][0]['state'], 'on')
+        self.assertEqual(inner['choose'][0]['sequence'][0]['action'], 'homeassistant.turn_off')
+        self.assertEqual(inner['default'][0]['action'], 'homeassistant.turn_on')
+
+    def test_early_stop_requires_window_switch_on_and_a_confirmed_target(self):
+        branch = self.doc['actions'][0]['choose'][2]
+        kinds = [c['condition'] for c in branch['conditions']]
+        self.assertEqual(kinds, ['trigger', 'time', 'state', 'state'])
+        self.assertEqual(branch['conditions'][0]['id'], ['target', 'recheck'])
+        confirmed = branch['conditions'][3]
+        self.assertEqual(confirmed['state'], 'on')
+        self.assertIn('minutes', confirmed['for'])
+        self.assertEqual([a['action'] for a in branch['sequence']], ['homeassistant.turn_off'])
+
+    def test_every_trigger_id_is_handled(self):
+        ids = {t['id'] for t in self.doc['triggers']}
+        self.assertEqual(ids, {'start', 'end', 'target', 'recheck'})
+        handled = {'end', 'start', 'target', 'recheck'}
+        self.assertEqual(ids, handled)
+
+    def test_state_trigger_waits_for_the_confirmation_delay(self):
+        trigger = next(t for t in self.doc['triggers'] if t['id'] == 'target')
+        self.assertEqual(trigger['to'], 'on')
+        self.assertIsInstance(trigger['for']['minutes'], InputTag)
 
 
 if __name__ == '__main__':

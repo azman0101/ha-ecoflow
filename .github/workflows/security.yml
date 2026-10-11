@@ -32,4 +32,4 @@ jobs:
           python-version: "3.13"
       - run: python -m pip install bandit
       # Medium+ severity only; the single known low finding is a deliberate best-effort cleanup.
-      - run: bandit -ll ecoflow-battery-reader/ecoflow_battery.py
+      - run: bandit -ll ecoflow-battery-reader/ecoflow_battery.py ecoflow-battery-reader/ecoflow_discovery.py ecoflow-battery-reader/prepare_config.py

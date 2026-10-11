@@ -21,27 +21,36 @@ Ce dépôt contient le module complémentaire Home Assistant pour connecter et i
 ## Configuration
 
 Dans l'onglet **Configuration** du module complémentaire :
-- Renseignez vos identifiants EcoFlow (email et mot de passe).
-- Vérifiez le numéro de série de votre batterie (`device_sn`).
-- Renseignez vos identifiants de broker MQTT local (`core-mosquitto` par défaut, ou l'IP de votre HA).
-- Cliquez sur **Enregistrer** puis sur **Démarrer**.
+- renseignez vos identifiants EcoFlow (e-mail et mot de passe) et le numéro de série de votre batterie (`device_sn`) ;
+- laissez `local_mqtt.host` **vide** : le module utilise automatiquement le broker Mosquitto détecté par Home Assistant, sans identifiants à saisir (renseignez `local_mqtt` seulement pour un autre broker) ;
+- cliquez sur **Enregistrer** puis sur **Démarrer**.
 
-## Capteurs et automatisation
+## Entités : aucune configuration YAML
 
-Voir les fichiers :
-- `ecoflow-battery-reader/homeassistant.yaml` pour les entités capteurs MQTT à intégrer dans `configuration.yaml`.
-- `ecoflow-battery-reader/automation-ui.yaml` pour l'automatisation de recharge de la prise Aqara en heures creuses.
+Le module annonce lui-même ses entités à Home Assistant par la **découverte MQTT** : un appareil **« EcoFlow DELTA 3 »** apparaît dans *Paramètres → Appareils et services → MQTT*, avec le niveau de batterie, les limites de charge, les puissances, l'état de charge et des capteurs de santé (collecteur connecté, télémétrie récente, charge cible atteinte). Il n'y a **rien à copier dans `configuration.yaml`**. Prérequis : l'intégration MQTT de Home Assistant connectée à ce broker, avec la découverte activée (réglage par défaut).
+
+Détails, options et migration depuis la 1.0.x : [`ecoflow-battery-reader/README.md`](ecoflow-battery-reader/README.md).
+
+## Recharge programmée (optionnel, indépendant du module)
+
+Piloter une prise pour ne charger que pendant une plage horaire est un besoin à part, qui n'a pas besoin du module : c'est un **blueprint** générique (n'importe quel interrupteur, n'importe quel capteur binaire « cible atteinte »). Il fonctionne très bien avec le capteur *Charge cible atteinte* du module.
+
+[![Importer le blueprint dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fazman0101%2Fha-ecoflow%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fazman0101%2Fscheduled_charge_window.yaml)
+
+Ou, dans Home Assistant : *Paramètres → Automatisations → Blueprints → Importer un blueprint*, puis collez
+`https://github.com/azman0101/ha-ecoflow/blob/main/blueprints/automation/azman0101/scheduled_charge_window.yaml`.
+Vous choisissez ensuite la prise, le capteur, les heures de début et de fin dans l'interface.
 
 ## ⚠️ Transparence : code 100 % généré par IA
 
-**L'intégralité de ce dépôt — code Python, Dockerfile, configuration du module, YAML Home Assistant, tests, documentation et workflows GitHub Actions — a été générée par des assistants d'intelligence artificielle** (OpenAI Codex et Anthropic Claude). Aucune ligne n'a été écrite à la main.
+**L'intégralité de ce dépôt — code Python, Dockerfile, configuration du module, blueprint Home Assistant, tests, documentation et workflows GitHub Actions — a été générée par des assistants d'intelligence artificielle** (OpenAI Codex et Anthropic Claude). Aucune ligne n'a été écrite à la main.
 
 Concrètement :
 
 - le code **n'a pas fait l'objet d'un audit de sécurité professionnel** ; une relecture humaine n'est pas garantie ;
 - il a été testé sur une seule installation (une DELTA 3 Classic) — voir `ecoflow-battery-reader/VALIDATION.md` ;
 - des erreurs, hallucinations ou comportements inattendus sont possibles ;
-- **relisez le code avant de lui confier vos identifiants EcoFlow**, et ne vous reposez pas sur l'automatisation de recharge pour une protection critique (incendie, sécurité des biens ou des personnes) ;
+- **relisez le code avant de lui confier vos identifiants EcoFlow**, et ne vous reposez pas sur le blueprint de recharge ni sur le module pour une protection critique (incendie, sécurité des biens ou des personnes) ;
 - le statut de droit d'auteur des contenus générés par IA varie selon les juridictions.
 
 Les contributions (issues, pull requests) sont les bienvenues, y compris celles assistées par IA, à condition d'être relues et testées par leur auteur.
