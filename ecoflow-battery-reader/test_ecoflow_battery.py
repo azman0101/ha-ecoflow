@@ -611,5 +611,54 @@ class BlueprintTests(unittest.TestCase):
         self.assertIsInstance(trigger['for']['minutes'], InputTag)
 
 
+class DashboardTests(unittest.TestCase):
+    PLACEHOLDERS = {'YOUR_PLUG_SWITCH', 'YOUR_PLUG_POWER', 'YOUR_PLUG_ENERGY', 'YOUR_PLUG_CURRENT', 'YOUR_AUTOMATION'}
+
+    def setUp(self):
+        self.text = (REPO / 'dashboards' / 'ecoflow_dashboard.yaml').read_text(encoding='utf-8')
+        self.readme = (REPO / 'dashboards' / 'README.md').read_text(encoding='utf-8')
+
+    def test_template_is_valid_yaml_with_the_expected_views(self):
+        dashboard = yaml.safe_load(self.text)
+        self.assertEqual([view['path'] for view in dashboard['views']], ['recharge', 'historique'])
+
+    def test_every_ecoflow_entity_is_created_by_the_addon(self):
+        created = {entity[3] for entity in discovery.ENTITIES.values()} | {discovery.COLLECTOR_CONNECTED[3]}
+        used = set(re.findall(r'\b((?:sensor|binary_sensor)\.ecoflow_[a-z0-9_]+)', self.text))
+        self.assertTrue(used)
+        self.assertEqual(used - created, set())
+
+    def test_placeholders_are_exactly_the_documented_ones(self):
+        used = set(re.findall(r'\bYOUR_[A-Z_]+', self.text))
+        self.assertEqual(used, self.PLACEHOLDERS)
+        for placeholder in self.PLACEHOLDERS:
+            self.assertIn('`%s`' % placeholder, self.readme)
+
+    def test_filled_in_template_stays_valid(self):
+        filled = self.text
+        for placeholder, entity in [('YOUR_PLUG_SWITCH', 'switch.test'), ('YOUR_PLUG_POWER', 'sensor.test_power'),
+                                    ('YOUR_PLUG_ENERGY', 'sensor.test_energy'),
+                                    ('YOUR_PLUG_CURRENT', 'sensor.test_current'),
+                                    ('YOUR_AUTOMATION', 'automation.test')]:
+            filled = filled.replace(placeholder, entity)
+        yaml.safe_load(filled)
+
+    def test_documented_removal_of_the_optional_current_sensor_keeps_yaml_valid(self):
+        # The README says to delete the 3 lines of the entry: entity, name and icon.
+        trimmed, count = re.subn(r'\n[ ]*- entity: YOUR_PLUG_CURRENT\n[ ]*name:[^\n]*\n[ ]*icon:[^\n]*', '', self.text)
+        self.assertEqual(count, 1)
+        body = trimmed.split('\ntitle:', 1)[1]  # ignore the header comment that still names the placeholder
+        self.assertNotIn('YOUR_PLUG_CURRENT', body)
+        for placeholder, entity in [('YOUR_PLUG_SWITCH', 'switch.test'), ('YOUR_PLUG_POWER', 'sensor.test_power'),
+                                    ('YOUR_PLUG_ENERGY', 'sensor.test_energy'), ('YOUR_AUTOMATION', 'automation.test')]:
+            trimmed = trimmed.replace(placeholder, entity)
+        entities = [card for view in yaml.safe_load(trimmed)['views'] for card in view['cards']
+                    if card.get('title', '').startswith('🔌')][0]['entities']
+        self.assertEqual(len(entities), 3)
+
+    def test_no_vendor_specific_example(self):
+        self.assertNotIn('aqara', (self.text + self.readme).lower())
+
+
 if __name__ == '__main__':
     unittest.main()

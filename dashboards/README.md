@@ -17,7 +17,7 @@ Ce dossier contient le modèle officiel de tableau de bord Lovelace pour supervi
 
 ## Installation dans Home Assistant
 
-### Méthode 1 : Via l'interface graphique (Recommandée)
+### Installation via l'interface graphique
 
 1. Dans Home Assistant, allez dans **Paramètres** > **Tableaux de bord** > bouton **Ajouter un tableau de bord** (en bas à droite).
 2. Choisissez **Nouveau tableau de bord à partir de zéro** :
@@ -27,29 +27,12 @@ Ce dossier contient le modèle officiel de tableau de bord Lovelace pour supervi
 3. Ouvrez le nouveau tableau de bord dans votre barre latérale.
 4. Cliquez sur les **trois petits points verticaux** (en haut à droite) > **Modifier le tableau de bord**.
 5. Cliquez à nouveau sur les **trois petits points** > **Éditeur de configuration brute** (Raw configuration editor).
-6. Ouvrez le fichier [`ecoflow_dashboard.yaml`](ecoflow_dashboard.yaml) :
-   - Remplacez dans le texte :
-     - `YOUR_PLUG_SWITCH` par l'interrupteur de votre prise (ex: `switch.prise_salon`)
-     - `YOUR_PLUG_POWER` par le capteur de puissance de votre prise (ex: `sensor.prise_salon_power`)
-     - `YOUR_PLUG_ENERGY` par le capteur d'énergie de votre prise (ex: `sensor.prise_salon_energy`)
-     - `YOUR_PLUG_CURRENT` par le capteur de courant (ou supprimez la ligne si indisponible)
-     - `YOUR_AUTOMATION` par l'identifiant de votre automatisation (ex: `automation.scheduled_charge_window_with_early_stop`)
+6. Ouvrez le fichier [`ecoflow_dashboard.yaml`](ecoflow_dashboard.yaml) et remplacez **chaque** nom en majuscules par vos identifiants, idéalement avec la fonction Rechercher / Remplacer de votre éditeur (`Ctrl+H`) :
+   - `YOUR_PLUG_SWITCH` : l'interrupteur de votre prise (ex: `switch.prise_salon`)
+   - `YOUR_PLUG_POWER` : son capteur de puissance (ex: `sensor.prise_salon_power`)
+   - `YOUR_PLUG_ENERGY` : son capteur d'énergie (ex: `sensor.prise_salon_energy`)
+   - `YOUR_PLUG_CURRENT` : son capteur de courant. S'il n'existe pas, supprimez **les 3 lignes** de l'entrée (`- entity: YOUR_PLUG_CURRENT`, `name:` et `icon:`) : en supprimer une seule laisse un YAML invalide.
+   - `YOUR_AUTOMATION` : l'automatisation créée depuis le blueprint (par défaut `automation.scheduled_charge_window_with_early_stop`, d'après son nom)
 7. Collez le résultat dans l'éditeur et cliquez sur **Enregistrer**.
 
----
-
-### Méthode 2 : Générateur automatique (en ligne de commande)
-
-Un script Python est disponible dans `scripts/generate_dashboard.py` pour générer automatiquement le fichier personnalisé :
-
-```bash
-python3 scripts/generate_dashboard.py \
-  --switch switch.aqara_smart_plug_eu_2 \
-  --power sensor.aqara_smart_plug_eu_power_2 \
-  --energy sensor.aqara_smart_plug_eu_energy_2 \
-  --current sensor.aqara_smart_plug_eu_active_current_2 \
-  --automation automation.scheduled_charge_window_with_early_stop \
-  --output mon_dashboard.yaml
-```
-
-Il ne vous reste plus qu'à coller le contenu de `mon_dashboard.yaml` dans Home Assistant !
+Les entités `sensor.ecoflow_*` et `binary_sensor.ecoflow_*` sont créées automatiquement par le module (découverte MQTT) : ne les modifiez pas.
