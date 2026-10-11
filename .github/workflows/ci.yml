@@ -17,8 +17,8 @@ jobs:
     name: Lint & tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
@@ -41,7 +41,7 @@ jobs:
     name: Home Assistant add-on linter
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: frenck/action-app-linter@v2
         with:
           path: ./ecoflow-battery-reader
@@ -50,8 +50,8 @@ jobs:
     name: Dockerfile lint & build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: hadolint/hadolint-action@v3.1.0
+      - uses: actions/checkout@v7
+      - uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: ecoflow-battery-reader/Dockerfile
       - name: Build image (no push)
