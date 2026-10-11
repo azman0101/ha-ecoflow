@@ -38,6 +38,7 @@ jobs:
     name: CodeQL
     runs-on: ubuntu-latest
     permissions:
+      actions: read   # required by CodeQL on private repositories
       contents: read
       security-events: write
     steps:
