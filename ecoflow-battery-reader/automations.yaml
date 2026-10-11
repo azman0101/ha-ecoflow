@@ -1,0 +1,95 @@
+# Remplace l'automatisation Prise Aqara - Heures Creuses de l'AUTRE HA.
+# Dans automations.yaml, ajouter cet élément à la liste existante.
+- id: aqara_heures_creuses_ecoflow_mqtt_v1
+  alias: Prise Aqara - Heures Creuses et batterie EcoFlow
+  description: >-
+    Allume à 01h55, coupe à 04h20 sans dépendre du cloud, et coupe avant
+    04h20 si le SOC atteint pendant deux minutes le plafond configuré moins
+    0,2 point. Une mesure absente ou périmée n'autorise aucun arrêt anticipé.
+  triggers:
+    - trigger: time
+      at: '01:55:00'
+      id: allumer
+    - trigger: time
+      at: '04:20:00'
+      id: eteindre
+    - trigger: state
+      entity_id: binary_sensor.ecoflow_charge_cible_atteinte
+      to: 'on'
+      for:
+        minutes: 2
+      id: pleine
+    # Rattrape une minuterie perdue par un rechargement/restart de HA.
+    - trigger: time_pattern
+      minutes: '/1'
+      id: recontrole
+  conditions: []
+  actions:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: eteindre
+          sequence:
+            - action: switch.turn_off
+              target:
+                entity_id: switch.aqara_smart_plug_eu_2
+        - conditions:
+            - condition: trigger
+              id: allumer
+          sequence:
+            - choose:
+                - conditions:
+                    - condition: template
+                      value_template: >-
+                        {% set soc = states('sensor.ecoflow_batterie') %}
+                        {% set limit = states('sensor.ecoflow_plafond_charge') %}
+                        {% set age_soc = as_timestamp(now()) - (state_attr('sensor.ecoflow_batterie', 'received_at') | float(0)) %}
+                        {% set age_limit = as_timestamp(now()) - (state_attr('sensor.ecoflow_plafond_charge', 'received_at') | float(0)) %}
+                        {{ is_state('binary_sensor.ecoflow_collecteur_connecte', 'on')
+                           and is_number(soc) and is_number(limit)
+                           and 0 <= (soc | float(-1)) <= 100
+                           and 1 <= (limit | float(-1)) <= 100
+                           and 0 <= age_soc < 180 and 0 <= age_limit < 180
+                           and (soc | float(-1)) >= (limit | float(101)) - 0.2 }}
+                  sequence:
+                    # Déjà pleine : laisser/couper la prise, sans lancer la charge.
+                    - action: switch.turn_off
+                      target:
+                        entity_id: switch.aqara_smart_plug_eu_2
+              default:
+                - action: switch.turn_on
+                  target:
+                    entity_id: switch.aqara_smart_plug_eu_2
+        - conditions:
+            - condition: trigger
+              id:
+                - pleine
+                - recontrole
+            # Limite l'arrêt anticipé au créneau de recharge programmé.
+            - condition: time
+              after: '01:55:00'
+              before: '04:20:00'
+            - condition: state
+              entity_id: switch.aqara_smart_plug_eu_2
+              state: 'on'
+            - condition: template
+              value_template: >-
+                {% set soc = states('sensor.ecoflow_batterie') %}
+                {% set limit = states('sensor.ecoflow_plafond_charge') %}
+                {% set age_soc = as_timestamp(now()) - (state_attr('sensor.ecoflow_batterie', 'received_at') | float(0)) %}
+                {% set age_limit = as_timestamp(now()) - (state_attr('sensor.ecoflow_plafond_charge', 'received_at') | float(0)) %}
+                {% set full = states.binary_sensor.ecoflow_charge_cible_atteinte %}
+                {{ is_state('binary_sensor.ecoflow_collecteur_connecte', 'on')
+                   and full is defined and full is not none and full.state == 'on'
+                   and as_timestamp(now()) - as_timestamp(full.last_changed) >= 120
+                   and is_number(soc) and is_number(limit)
+                   and 0 <= (soc | float(-1)) <= 100
+                   and 1 <= (limit | float(-1)) <= 100
+                   and 0 <= age_soc < 180 and 0 <= age_limit < 180
+                   and (soc | float(-1)) >= (limit | float(101)) - 0.2 }}
+          sequence:
+            - action: switch.turn_off
+              target:
+                entity_id: switch.aqara_smart_plug_eu_2
+  mode: queued
+  max: 5

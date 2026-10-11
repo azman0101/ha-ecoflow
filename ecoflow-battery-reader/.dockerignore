@@ -1,0 +1,7 @@
+*
+!Dockerfile
+!requirements.txt
+!ecoflow_battery.py
+!delta3_descriptor.bin
+!THIRD_PARTY.md
+!LICENSE.hassio-ecoflow-cloud
