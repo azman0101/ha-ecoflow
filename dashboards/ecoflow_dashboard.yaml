@@ -5,11 +5,12 @@
 # INSTRUCTIONS DE PERSONNALISATION :
 # 1. Les entités EcoFlow (sensor.ecoflow_*) sont générées automatiquement par
 #    l'Add-on via MQTT Discovery. Vous n'avez pas besoin de les modifier.
-# 2. Remplacez les 4 identifiants de prise ci-dessous par ceux de votre matériel :
-#    - YOUR_PLUG_SWITCH  : Interrupteur de la prise (ex: switch.aqara_smart_plug_eu_2)
-#    - YOUR_PLUG_POWER   : Puissance mesurée en W   (ex: sensor.aqara_smart_plug_eu_power_2)
-#    - YOUR_PLUG_ENERGY  : Énergie totale en kWh    (ex: sensor.aqara_smart_plug_eu_energy_2)
-#    - YOUR_PLUG_CURRENT : Courant mesuré en A      (ex: sensor.aqara_smart_plug_eu_active_current_2)
+# 2. Remplacez TOUS les identifiants ci-dessous par ceux de votre matériel (un
+#    identifiant laissé tel quel affiche une erreur dans la carte correspondante) :
+#    - YOUR_PLUG_SWITCH  : Interrupteur de la prise (ex: switch.ma_prise)
+#    - YOUR_PLUG_POWER   : Puissance mesurée en W   (ex: sensor.ma_prise_power)
+#    - YOUR_PLUG_ENERGY  : Énergie totale en kWh    (ex: sensor.ma_prise_energy)
+#    - YOUR_PLUG_CURRENT : Courant mesuré en A      (ex: sensor.ma_prise_current)
 # 3. YOUR_AUTOMATION     : Automatisation Blueprint  (ex: automation.scheduled_charge_window_with_early_stop)
 # ==============================================================================
 
@@ -104,7 +105,7 @@ views:
             icon: mdi:update
 
       - type: history-graph
-        title: 📈 Puissance : Prise vs Entrées EcoFlow (12h)
+        title: 📈 Puissance — Prise vs Entrées EcoFlow (12h)
         hours_to_show: 12
         entities:
           - entity: YOUR_PLUG_POWER

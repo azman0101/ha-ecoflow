@@ -35,7 +35,7 @@ jobs:
       - name: YAML lint (add-on and workflows)
         run: >-
           yamllint -d '{extends: relaxed, rules: {line-length: disable}}'
-          ecoflow-battery-reader/config.yaml repository.yaml .github blueprints
+          ecoflow-battery-reader/config.yaml repository.yaml .github blueprints dashboards
 
   addon-lint:
     name: Home Assistant add-on linter
