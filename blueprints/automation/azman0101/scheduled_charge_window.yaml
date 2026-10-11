@@ -1,0 +1,130 @@
+blueprint:
+  name: Scheduled charge window with early stop
+  author: azman0101
+  domain: automation
+  source_url: https://github.com/azman0101/ha-ecoflow/blob/main/blueprints/automation/azman0101/scheduled_charge_window.yaml
+  homeassistant:
+    min_version: 2024.10.0
+  description: >-
+    Powers a charger (any switch, e.g. a smart plug) only during a daily time window, and stops
+    early once a "target reached" binary sensor has stayed on for a few minutes.
+
+
+    - At the start time the switch is turned on, unless the target is already reached.
+
+    - During the window, the switch is turned off once the target sensor has been continuously on
+    for the confirmation delay. An unavailable sensor never stops the charge early.
+
+    - At the end time the switch is turned off unconditionally, even if the sensor or the
+    integration providing it is unavailable.
+
+
+    Works with the `Charge cible atteinte` binary sensor of the EcoFlow DELTA 3 Reader add-on, but
+    has no dependency on it: any binary sensor will do.
+  input:
+    charge_switch:
+      name: Charger switch
+      description: Switch that powers the charger (smart plug, relay…).
+      selector:
+        entity:
+          domain:
+            - switch
+            - input_boolean
+    target_reached:
+      name: Charge target reached
+      description: Binary sensor that turns on when charging can stop.
+      selector:
+        entity:
+          domain: binary_sensor
+    start_time:
+      name: Start of the window
+      default: "02:00:00"
+      selector:
+        time:
+    end_time:
+      name: End of the window
+      description: The switch is always turned off at this time. The window may cross midnight.
+      default: "05:00:00"
+      selector:
+        time:
+    confirmation_minutes:
+      name: Confirmation delay
+      description: Minutes the target sensor must stay on before the early stop.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 30
+          step: 1
+          unit_of_measurement: min
+          mode: slider
+
+mode: queued
+max: 5
+
+triggers:
+  - trigger: time
+    at: !input start_time
+    id: start
+  - trigger: time
+    at: !input end_time
+    id: end
+  - trigger: state
+    entity_id: !input target_reached
+    to: "on"
+    for:
+      minutes: !input confirmation_minutes
+    id: target
+  # Catches up after a restart or a reload that dropped the "for" timer.
+  - trigger: time_pattern
+    minutes: "/1"
+    id: recheck
+
+conditions: []
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: end
+        sequence:
+          - action: homeassistant.turn_off
+            target:
+              entity_id: !input charge_switch
+      - conditions:
+          - condition: trigger
+            id: start
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: !input target_reached
+                    state: "on"
+                sequence:
+                  - action: homeassistant.turn_off
+                    target:
+                      entity_id: !input charge_switch
+            default:
+              - action: homeassistant.turn_on
+                target:
+                  entity_id: !input charge_switch
+      - conditions:
+          - condition: trigger
+            id:
+              - target
+              - recheck
+          - condition: time
+            after: !input start_time
+            before: !input end_time
+          - condition: state
+            entity_id: !input charge_switch
+            state: "on"
+          - condition: state
+            entity_id: !input target_reached
+            state: "on"
+            for:
+              minutes: !input confirmation_minutes
+        sequence:
+          - action: homeassistant.turn_off
+            target:
+              entity_id: !input charge_switch

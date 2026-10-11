@@ -2,7 +2,8 @@
 """EcoFlow application MQTT -> target HA MQTT bridge, DELTA 3 Classic.
 
 Cloud publishes are restricted to an empty read-only property/get snapshot.
-No property/set, no developer API, no plug control. All secrets stay in memory.
+No property/set, no developer API, no switch/plug control. All secrets stay in memory.
+Entities are announced to Home Assistant through MQTT device discovery.
 """
 import argparse
 import base64
@@ -24,6 +25,9 @@ import paho.mqtt.client as mqtt
 from google.protobuf import descriptor_pool, message_factory
 from google.protobuf.json_format import MessageToDict
 
+import ecoflow_discovery as discovery
+
+__version__ = '1.1.0'  # Must equal `version` in config.yaml (checked by the tests and the release workflow).
 LOG = logging.getLogger('ecoflow_mqtt')
 DESCRIPTOR_SHA256 = 'c34e0f429a358dcafb94be7293fbd8d200f6700fbc929d7557affc7a2d83634a'
 API_HOSTS = {'https://api-e.ecoflow.com', 'https://api-a.ecoflow.com', 'https://api.ecoflow.com'}
@@ -61,6 +65,9 @@ def load_config(path, observe=False):
     cfg.setdefault('snapshot_interval', 60)
     cfg.setdefault('freshness_seconds', 180)
     cfg.setdefault('topic_prefix', 'ecoflow/delta3classic')
+    cfg.setdefault('discovery', True)
+    cfg.setdefault('discovery_prefix', 'homeassistant')
+    cfg.setdefault('target_margin', 0.2)
     for field in ('email', 'password', 'device_sn', 'instance_id'):
         if not isinstance(cfg.get(field), str) or not cfg[field]:
             raise SafeError('config_invalid')
@@ -69,8 +76,16 @@ def load_config(path, observe=False):
     if not isinstance(cfg['snapshot_interval'], int) or not 60 <= cfg['snapshot_interval'] <= 3600:
         raise SafeError('config_invalid')
     if cfg['freshness_seconds'] != 180:
-        # HA's YAML and automation use the same bound. Change all together.
+        # The discovery payload (expire_after) and the derived states use the same bound.
         raise SafeError('freshness_must_be_180')
+    if not isinstance(cfg['discovery'], bool):
+        raise SafeError('config_invalid')
+    if (not isinstance(cfg['discovery_prefix'], str)
+            or not discovery.DISCOVERY_PREFIX_RE.fullmatch(cfg['discovery_prefix'])):
+        raise SafeError('config_invalid')
+    margin = cfg['target_margin']
+    if isinstance(margin, bool) or not isinstance(margin, (int, float)) or not 0 <= margin <= 5:
+        raise SafeError('config_invalid')
     prefix = cfg['topic_prefix']
     if not isinstance(prefix, str) or not re.fullmatch(r'[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*', prefix):
         raise SafeError('config_invalid')
@@ -288,6 +303,40 @@ class Bridge:
     def availability(self):
         self.local_publish('availability', 'online' if self.cloud_subscribed.is_set() else 'offline', True)
 
+    def publish_discovery(self):
+        """MQTT device discovery, sent on connect and again on every Home Assistant birth message.
+
+        Deliberately not retained (the approach recommended by Home Assistant): a retained document would
+        keep ghost entities alive after the add-on is uninstalled.
+        """
+        if self.observe or not self.cfg['discovery'] or not (self.local and self.local_ready.is_set()):
+            return
+        document = discovery.build_payload(self.cfg, __version__)
+        self.local.publish(discovery.discovery_topic(self.cfg),
+                           json.dumps(document, ensure_ascii=False, separators=(',', ':')), qos=1, retain=False)
+        LOG.info('discovery_published')
+
+    def derived_states(self, now):
+        """States computed from measurement ages, so Home Assistant needs no template to judge freshness.
+
+        charge_target_reached is only produced while BOTH the SOC and the charge limit are fresh; otherwise it
+        is not published and Home Assistant marks it unavailable (expire_after), which can never read as "full".
+        """
+        seconds = self.cfg['freshness_seconds']
+        with self.lock:
+            soc, limit = self.metrics.get('soc'), self.metrics.get('charge_limit')
+        soc_fresh = fresh(soc, now, seconds)
+        states = {'telemetry_fresh': 'ON' if soc_fresh and self.cloud_subscribed.is_set() else 'OFF'}
+        if soc_fresh and fresh(limit, now, seconds):
+            states['charge_target_reached'] = 'ON' if soc.value >= limit.value - self.cfg['target_margin'] else 'OFF'
+        return states
+
+    def publish_derived(self):
+        if self.observe:
+            return
+        for key, value in self.derived_states(time.time()).items():
+            self.local_publish(key, value, retain=False)
+
     def publish_metrics(self, metrics):
         if self.observe:
             for key in ('soc', 'charge_limit'):
@@ -318,16 +367,30 @@ class Bridge:
                 LOG.warning('target_mqtt_connection_rejected')
                 return
             self.local_ready.set()
+            if self.cfg['discovery']:
+                client.subscribe(discovery.status_topic(self.cfg), qos=1)
+            self.publish_discovery()
             self.availability()
             with self.lock:
                 self.publish_metrics(dict(self.metrics))
+            self.publish_derived()
             LOG.info('target_mqtt_connected')
 
         def disconnected(client, userdata, flags, reason, properties):
             self.local_ready.clear()
             LOG.warning('target_mqtt_disconnected')
 
+        def local_message(client, userdata, message):
+            # Home Assistant announces itself with 'online' at start-up: re-send discovery and current states.
+            if message.topic == discovery.status_topic(self.cfg) and message.payload.strip() == b'online':
+                self.publish_discovery()
+                self.availability()
+                with self.lock:
+                    self.publish_metrics(dict(self.metrics))
+                self.publish_derived()
+
         self.local.on_connect, self.local.on_disconnect = connected, disconnected
+        self.local.on_message = local_message
         self.local.connect_async(cfg['host'], cfg['port'], keepalive=30)
         self.local.loop_start()
 
@@ -344,6 +407,7 @@ class Bridge:
         with self.lock:
             self.metrics.update(values)
             self.publish_metrics(values)
+        self.publish_derived()
 
     def cloud_session(self, credentials, duration_deadline):
         self.session_end.clear()
@@ -387,7 +451,7 @@ class Bridge:
 
         self.cloud.on_connect, self.cloud.on_subscribe = connected, subscribed
         self.cloud.on_disconnect, self.cloud.on_message = disconnected, self.on_message
-        next_snapshot, next_heartbeat = 0.0, 0.0
+        next_snapshot, next_heartbeat, next_derived = 0.0, 0.0, 0.0
         try:
             self.cloud.connect(credentials['host'], credentials['port'], keepalive=30)
             self.cloud.loop_start()
@@ -405,6 +469,10 @@ class Bridge:
                         self.read_queries += 1
                         LOG.info('read_snapshot_requested count=%s', self.read_queries)
                     next_snapshot = now + self.cfg['snapshot_interval']
+                if now >= next_derived:
+                    # Keeps expire_after alive while data is fresh, and flips telemetry_fresh to OFF when it is not.
+                    self.publish_derived()
+                    next_derived = now + 30
                 if now >= next_heartbeat:
                     with self.lock:
                         soc_fresh = fresh(self.metrics.get('soc'), time.time())

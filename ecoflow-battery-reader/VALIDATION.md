@@ -1,4 +1,20 @@
-# Validation — 11 octobre 2026
+# Validation
+
+## 1.1.0 — 11 octobre 2026
+
+Vérifié :
+- 62 tests hors ligne (décodage, fraîcheur, états dérivés, payloads de découverte, préparation des options, blueprint, absence de numéro de série réel).
+- Test de bout en bout du vrai collecteur contre un **broker MQTT local** (`amqtt`) : découverte publiée à la connexion (12 composants, non retenue), états publiés sans RETAIN, découverte renvoyée à la réception de `homeassistant/status = online`, SOC périmé ⇒ `charge_target_reached` non publié et `telemetry_fresh = OFF`, disponibilité `offline` à la perte du cloud.
+- Noms de champs de la découverte par appareil confirmés dans la documentation MQTT de Home Assistant.
+- `bandit` (gravité moyenne et plus), `ruff`, `pip-audit`, build Docker et linter d'add-on en CI.
+
+**Non vérifié** (aucune instance Home Assistant n'était disponible) :
+- création effective des entités et de l'appareil par Home Assistant ;
+- récupération des identifiants via le service `mqtt` du Supervisor ;
+- exécution du blueprint dans Home Assistant (structure et logique vérifiées par tests uniquement) ;
+- aucun essai avec le cloud EcoFlow réel pour cette version.
+
+## 1.0.0 — 11 octobre 2026
 
 ## Vérifications réussies
 

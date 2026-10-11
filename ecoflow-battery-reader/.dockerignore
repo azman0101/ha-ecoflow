@@ -6,3 +6,5 @@
 !THIRD_PARTY.md
 !LICENSE.hassio-ecoflow-cloud
 !run.sh
+!ecoflow_discovery.py
+!prepare_config.py
