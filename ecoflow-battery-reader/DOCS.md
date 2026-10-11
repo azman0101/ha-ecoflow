@@ -4,11 +4,11 @@ Collecte en continu l'état d'une batterie EcoFlow DELTA 3 Classic via l'API clo
 
 ## Démarrage rapide
 
-1. Installez et démarrez le module **Mosquitto broker**, puis vérifiez que l'intégration **MQTT** de Home Assistant est configurée (Home Assistant la propose automatiquement).
+1. Installez et démarrez le broker MQTT fourni par le Supervisor (généralement l'add-on **Mosquitto broker**), puis vérifiez que l'intégration **MQTT** de Home Assistant est configurée (Home Assistant la propose automatiquement).
 2. Dans l'onglet **Configuration** de ce module :
    - **email** / **password** : votre compte EcoFlow (celui de l'application mobile) ;
    - **device_sn** : numéro de série de la batterie (dans l'application EcoFlow, ex. `P321XXXXXXXXXXXX`) ;
-   - laissez **local_mqtt.host vide** pour utiliser automatiquement le broker Mosquitto de Home Assistant.
+   - laissez **local_mqtt.host vide** pour utiliser automatiquement le broker MQTT fourni par le Supervisor.
 3. Enregistrez et démarrez. L'appareil **EcoFlow DELTA 3** apparaît dans *Paramètres → Appareils et services → MQTT*.
 
 ## Options

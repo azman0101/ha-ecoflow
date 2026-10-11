@@ -522,8 +522,8 @@ class Bridge:
                 if info:
                     try:
                         info.wait_for_publish(timeout=3)
-                    except Exception:
-                        pass
+                    except (OSError, RuntimeError) as exc:
+                        LOG.debug('offline_publish_wait_failed type=%s', type(exc).__name__)
                 self.local.disconnect()
                 self.local.loop_stop()
             LOG.info('collector_stopped messages=%s read_queries=%s decode_errors=%s',

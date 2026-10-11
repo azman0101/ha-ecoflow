@@ -23,7 +23,7 @@ Le collecteur utilise les topics applicatifs `/app/device/property/{sn}`, `/app/
 |---|---|---|
 | `email`, `password` | — | Compte EcoFlow (celui de l'application mobile). |
 | `device_sn` | — | Numéro de série de la batterie (dans l'application EcoFlow). |
-| `local_mqtt.host` | *(vide)* | **Vide = broker fourni par le Supervisor** (Mosquitto), sans identifiants à saisir. Renseigné = broker manuel. |
+| `local_mqtt.host` | *(vide)* | **Vide = broker MQTT fourni par le Supervisor** (généralement Mosquitto), sans identifiants à saisir. Renseigné = broker manuel. |
 | `local_mqtt.port`, `username`, `password`, `tls` | 1883, —, —, non | Uniquement pour un broker manuel. |
 | `discovery` | oui | Annonce les entités à Home Assistant (découverte MQTT). |
 | `discovery_prefix` | `homeassistant` | Préfixe de découverte de l'intégration MQTT de Home Assistant. |
