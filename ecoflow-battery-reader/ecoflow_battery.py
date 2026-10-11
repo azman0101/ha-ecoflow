@@ -522,7 +522,7 @@ class Bridge:
                 if info:
                     try:
                         info.wait_for_publish(timeout=3)
-                    except (OSError, RuntimeError) as exc:
+                    except (ValueError, RuntimeError) as exc:  # the two errors paho documents for wait_for_publish
                         LOG.debug('offline_publish_wait_failed type=%s', type(exc).__name__)
                 self.local.disconnect()
                 self.local.loop_stop()

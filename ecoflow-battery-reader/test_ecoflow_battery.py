@@ -283,6 +283,39 @@ class DiscoveryTests(unittest.TestCase):
             self.assertIsNone(pattern.search(path.read_text(errors='ignore')), str(path))
 
 
+class ShutdownTests(unittest.TestCase):
+    """The offline publication at shutdown is best effort: paho's documented errors must not abort cleanup."""
+
+    def run_shutdown(self, error):
+        bridge = reader.Bridge(CFG)
+        bridge.stop.set()  # skip the cloud loop: only the shutdown path runs
+        local = mock.Mock()
+        info = local.publish.return_value
+        info.wait_for_publish.side_effect = error
+
+        def fake_start_local():
+            bridge.local = local
+            bridge.local_ready.set()
+        with mock.patch.object(bridge, 'start_local', side_effect=fake_start_local):
+            bridge.run()
+        return local
+
+    def test_documented_paho_errors_do_not_abort_cleanup(self):
+        for error in (ValueError('Message is not queued due to ERR_QUEUE_SIZE'),
+                      RuntimeError('Message publish failed: The connection was lost.')):
+            local = self.run_shutdown(error)
+            local.disconnect.assert_called_once()
+            local.loop_stop.assert_called_once()
+            offline = [c for c in local.publish.call_args_list if c.args[0].endswith('/availability')]
+            self.assertEqual(offline[-1].args[1], 'offline')
+            self.assertTrue(offline[-1].kwargs['retain'])
+
+    def test_clean_shutdown_waits_for_the_offline_message(self):
+        local = self.run_shutdown(None)
+        local.publish.return_value.wait_for_publish.assert_called_once_with(timeout=3)
+        local.disconnect.assert_called_once()
+
+
 class DerivedStateTests(unittest.TestCase):
     NOW = 500
 
