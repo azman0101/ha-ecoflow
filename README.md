@@ -22,7 +22,7 @@ Ce dépôt contient le module complémentaire Home Assistant pour connecter et i
 
 Dans l'onglet **Configuration** du module complémentaire :
 - renseignez vos identifiants EcoFlow (e-mail et mot de passe) et le numéro de série de votre batterie (`device_sn`) ;
-- laissez `local_mqtt.host` **vide** : le module utilise automatiquement le broker Mosquitto détecté par Home Assistant, sans identifiants à saisir (renseignez `local_mqtt` seulement pour un autre broker) ;
+- laissez `local_mqtt.host` **vide** : le module utilise automatiquement le broker MQTT fourni par le Supervisor (généralement l'add-on Mosquitto), sans identifiants à saisir ; renseignez `local_mqtt` seulement pour un autre broker ;
 - cliquez sur **Enregistrer** puis sur **Démarrer**.
 
 ## Entités : aucune configuration YAML

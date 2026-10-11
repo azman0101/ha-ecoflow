@@ -13,7 +13,7 @@ permissions:
 jobs:
   pip-audit:
     name: Python dependency audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: 'ubuntu-latest' moves to 26.04 from 2026-10-19 (actions/runner-images#14748)
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -24,7 +24,7 @@ jobs:
 
   bandit:
     name: Bandit (static security analysis)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # pinned: 'ubuntu-latest' moves to 26.04 from 2026-10-19 (actions/runner-images#14748)
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

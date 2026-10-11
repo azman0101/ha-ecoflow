@@ -8,6 +8,10 @@ Vérifié :
 - Noms de champs de la découverte par appareil confirmés dans la documentation MQTT de Home Assistant.
 - `bandit` (gravité moyenne et plus), `ruff`, `pip-audit`, build Docker et linter d'add-on en CI.
 
+Contrôles complémentaires du 11 octobre 2026 :
+- `pip-audit -r requirements.txt` : aucune vulnérabilité connue.
+- `bandit -ll ecoflow_battery.py ecoflow_discovery.py prepare_config.py` : aucune alerte medium/high.
+
 **Non vérifié** (aucune instance Home Assistant n'était disponible) :
 - création effective des entités et de l'appareil par Home Assistant ;
 - récupération des identifiants via le service `mqtt` du Supervisor ;
