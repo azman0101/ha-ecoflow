@@ -613,7 +613,6 @@ class BlueprintTests(unittest.TestCase):
         branch = self.doc['actions'][0]['choose'][0]
         self.assertEqual(branch['conditions'], [{'condition': 'trigger', 'id': 'end'}])
         self.assertEqual([a['action'] for a in branch['sequence']], ['homeassistant.turn_off'])
-        self.assertEqual(self.doc['conditions'], [])
 
     def test_start_turns_on_unless_the_target_is_already_reached(self):
         branch = self.doc['actions'][0]['choose'][1]
@@ -625,18 +624,53 @@ class BlueprintTests(unittest.TestCase):
     def test_early_stop_requires_window_switch_on_and_a_confirmed_target(self):
         branch = self.doc['actions'][0]['choose'][2]
         kinds = [c['condition'] for c in branch['conditions']]
-        self.assertEqual(kinds, ['trigger', 'time', 'state', 'state'])
-        self.assertEqual(branch['conditions'][0]['id'], ['target', 'recheck'])
-        confirmed = branch['conditions'][3]
+        self.assertEqual(kinds, ['trigger', 'state', 'state'])  # the window is enforced by the top-level guard
+        self.assertEqual(branch['conditions'][0]['id'], ['target', 'switch_on'])
+        confirmed = branch['conditions'][2]
         self.assertEqual(confirmed['state'], 'on')
         self.assertIn('minutes', confirmed['for'])
         self.assertEqual([a['action'] for a in branch['sequence']], ['homeassistant.turn_off'])
 
     def test_every_trigger_id_is_handled(self):
         ids = {t['id'] for t in self.doc['triggers']}
-        self.assertEqual(ids, {'start', 'end', 'target', 'recheck'})
-        handled = {'end', 'start', 'target', 'recheck'}
+        self.assertEqual(ids, {'start', 'end', 'target', 'switch_on'})
+        handled = set()
+        for branch in self.doc['actions'][0]['choose']:
+            for condition in branch['conditions']:
+                if condition['condition'] == 'trigger':
+                    handled |= set(condition['id'] if isinstance(condition['id'], list) else [condition['id']])
         self.assertEqual(ids, handled)
+
+    def test_no_periodic_polling(self):
+        self.assertNotIn('time_pattern', {t['trigger'] for t in self.doc['triggers']})
+        self.assertNotIn('time_pattern', self.text)
+
+    def test_outside_the_window_only_start_and_end_run(self):
+        guard = self.doc['conditions']
+        self.assertEqual(len(guard), 1)
+        self.assertEqual(guard[0]['condition'], 'or')
+
+        def runs(trigger_id, in_window):
+            for condition in guard[0]['conditions']:
+                if condition['condition'] == 'trigger' and trigger_id in condition['id']:
+                    return True
+                if condition['condition'] == 'time' and in_window:
+                    return True
+            return False
+        for trigger_id in ('start', 'end'):
+            self.assertTrue(runs(trigger_id, False), trigger_id)  # the end cutoff must never be blocked
+        for trigger_id in ('target', 'switch_on'):
+            self.assertFalse(runs(trigger_id, False), trigger_id)
+            self.assertTrue(runs(trigger_id, True), trigger_id)
+        time_condition = next(c for c in guard[0]['conditions'] if c['condition'] == 'time')
+        self.assertIsInstance(time_condition['after'], InputTag)
+        self.assertIsInstance(time_condition['before'], InputTag)
+
+    def test_turning_the_switch_on_triggers_a_check(self):
+        trigger = next(t for t in self.doc['triggers'] if t['id'] == 'switch_on')
+        self.assertEqual((trigger['trigger'], trigger['to']), ('state', 'on'))
+        self.assertIsInstance(trigger['entity_id'], InputTag)
+        self.assertEqual(trigger['entity_id'].name, 'charge_switch')
 
     def test_state_trigger_waits_for_the_confirmation_delay(self):
         trigger = next(t for t in self.doc['triggers'] if t['id'] == 'target')

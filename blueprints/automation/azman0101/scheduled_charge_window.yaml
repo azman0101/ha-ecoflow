@@ -18,6 +18,8 @@ blueprint:
     - At the end time the switch is turned off unconditionally, even if the sensor or the
     integration providing it is unavailable.
 
+    - Nothing runs outside the window except the start and the end: there is no periodic polling.
+
 
     Works with the `Charge cible atteinte` binary sensor of the EcoFlow DELTA 3 Reader add-on, but
     has no dependency on it: any binary sensor will do.
@@ -75,12 +77,24 @@ triggers:
     for:
       minutes: !input confirmation_minutes
     id: target
-  # Catches up after a restart or a reload that dropped the "for" timer.
-  - trigger: time_pattern
-    minutes: "/1"
-    id: recheck
+  # The switch is turned on (by hand or by another automation) while the target is already confirmed.
+  - trigger: state
+    entity_id: !input charge_switch
+    to: "on"
+    id: switch_on
 
-conditions: []
+# Outside the window only the start and end triggers do anything: every other trigger is ignored here,
+# so the automation does not even start a run (no logbook entry, no "last triggered" update).
+conditions:
+  - condition: or
+    conditions:
+      - condition: trigger
+        id:
+          - start
+          - end
+      - condition: time
+        after: !input start_time
+        before: !input end_time
 
 actions:
   - choose:
@@ -112,10 +126,7 @@ actions:
           - condition: trigger
             id:
               - target
-              - recheck
-          - condition: time
-            after: !input start_time
-            before: !input end_time
+              - switch_on
           - condition: state
             entity_id: !input charge_switch
             state: "on"
